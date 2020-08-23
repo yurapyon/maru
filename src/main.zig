@@ -1,6 +1,21 @@
 const std = @import("std");
 const c = @import("c.zig");
 const gfx = @import("gfx.zig");
+const flat = @import("flat.zig");
+
+test "vert2d" {
+    var arr: [4]flat.Vertex2d = undefined;
+    flat.Vertex2d.genQuad(&arr, false);
+    for (arr) |v| {
+        std.log.warn("{}\n", .{v.position});
+    }
+
+    var circle: [100]flat.Vertex2d = undefined;
+    flat.Vertex2d.genCircle(&circle);
+    for (circle) |v| {
+        std.log.warn("{}\n", .{v.position});
+    }
+}
 
 test "gfx" {
     const ctx = try gfx.Context.init(.{
@@ -110,6 +125,22 @@ test "gfx" {
 
     var prog = try gfx.Program.init(&[_]gfx.Shader{ v_shd, f_shd });
     defer prog.deinit();
+
+    var img = try gfx.Image.initFromFile("content/mahou.jpg");
+    defer img.deinit();
+
+    var tex = gfx.Texture.init(img);
+    defer tex.deinit();
+
+    var circle: [100]flat.Vertex2d = undefined;
+    flat.Vertex2d.genCircle(&circle);
+    var mesh = flat.Mesh2d.init(
+        &circle,
+        &[_]u32{},
+        c.GL_STREAM_DRAW,
+        c.GL_TRIANGLE_FAN,
+    );
+    defer mesh.deinit();
 
     std.log.warn("success\n", .{});
 

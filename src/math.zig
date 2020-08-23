@@ -1,4 +1,4 @@
-fn Vec2(comptime T: type) type {
+pub fn Vec2(comptime T: type) type {
     return packed struct {
         // TODO make sure T is a float or integer type
         const Self = @This();
@@ -6,21 +6,21 @@ fn Vec2(comptime T: type) type {
         x: T,
         y: T,
 
-        fn init(x: T, y: T) Self {
+        pub fn init(x: T, y: T) Self {
             return .{
                 .x = x,
                 .y = y,
             };
         }
 
-        fn add(self: Self, other: Self) Self {
+        pub fn add(self: Self, other: Self) Self {
             return .{
                 .x = self.x + other.x,
                 .y = self.y + other.y,
             };
         }
 
-        fn sub(self: Self, other: Self) Self {
+        pub fn sub(self: Self, other: Self) Self {
             return .{
                 .x = self.x - other.x,
                 .y = self.y - other.y,
@@ -29,7 +29,7 @@ fn Vec2(comptime T: type) type {
     };
 }
 
-fn AABB(comptime T: type) type {
+pub fn AABB(comptime T: type) type {
     return packed struct {
         const Self = @This();
 

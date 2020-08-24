@@ -264,7 +264,7 @@ const Map = struct {
     fn init(allocator: *Allocator, json_str: []const u8) !Self {
         @setEvalBranchQuota(7000);
         var stream = json.TokenStream.init(json_str);
-        return try json.parse(Map, &stream, .{ .allocator = allocator });
+        return json.parse(Map, &stream, .{ .allocator = allocator });
     }
 
     fn deinit(self: *Self, allocator: *Allocator) void {

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const c = @import("c.zig");
+const math = @import("math.zig");
 
 const Error = error{
     ContextInitError,
@@ -149,6 +150,20 @@ pub const Program = struct {
     pub fn deinit(self: *Self) void {
         c.glDeleteProgram(self.program);
     }
+
+    pub fn bind(self: Self) void {
+        c.glUseProgram(self.program);
+    }
+
+    pub fn unbind(self: Self) void {
+        c.glUseProgram(0);
+    }
+
+    pub fn getLocation(self: Self, name: [:0]const u8) Location {
+        return Location{
+            .location = c.glGetUniformLocation(self.program, name),
+        };
+    }
 };
 
 pub const u8Color = packed struct {
@@ -247,7 +262,6 @@ pub const Texture = struct {
     }
 };
 
-// TODO test this
 fn Buffer(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -284,7 +298,7 @@ fn Buffer(comptime T: type) type {
             c.glBindBuffer(c.GL_ARRAY_BUFFER, self.buffer);
             c.glBufferData(
                 c.GL_ARRAY_BUFFER,
-                (len * @sizeOf(T)),
+                @intCast(c_long, len * @sizeOf(T)),
                 null,
                 self.usage_type,
             );
@@ -298,6 +312,17 @@ fn Buffer(comptime T: type) type {
                 @intCast(c_long, slice.len * @sizeOf(T)),
                 slice.ptr,
                 self.usage_type,
+            );
+            c.glBindBuffer(c.GL_ARRAY_BUFFER, 0);
+        }
+
+        pub fn subData(self: Self, offset: usize, slice: []const T) void {
+            c.glBindBuffer(c.GL_ARRAY_BUFFER, self.buffer);
+            c.glBufferSubData(
+                c.GL_ARRAY_BUFFER,
+                @intCast(c_long, offset),
+                @intCast(c_long, slice.len * @sizeOf(T)),
+                slice.ptr,
             );
             c.glBindBuffer(c.GL_ARRAY_BUFFER, 0);
         }
@@ -366,10 +391,13 @@ pub const VertexArray = struct {
     }
 };
 
+// for now doesnt own data
 pub fn Mesh(comptime T: type) type {
     return struct {
         const Self = @This();
 
+        vertices: []const T,
+        indices: []const u32,
         vao: VertexArray,
         vbo: Buffer(T),
         ebo: Buffer(u32),
@@ -377,6 +405,9 @@ pub fn Mesh(comptime T: type) type {
         draw_type: c.GLenum,
 
         // TODO think abt how one might update verts later on
+        // could just edit the vbo directly
+        // change this to initWithData or idk
+        // initNull
 
         pub fn init(
             vertices: []const T,
@@ -395,6 +426,8 @@ pub fn Mesh(comptime T: type) type {
             vao.unbind();
 
             return Self{
+                .vertices = vertices,
+                .indices = indices,
                 .vao = vao,
                 .vbo = vbo,
                 .ebo = ebo,
@@ -404,9 +437,175 @@ pub fn Mesh(comptime T: type) type {
         }
 
         pub fn deinit(self: *Self) void {
-            self.vao.deinit();
-            self.vbo.deinit();
             self.ebo.deinit();
+            self.vbo.deinit();
+            self.vao.deinit();
+        }
+
+        pub fn draw(self: Self) void {
+            self.vao.bind();
+            if (self.indices.len == 0) {
+                c.glDrawArrays(
+                    self.draw_type,
+                    0.,
+                    @intCast(c_int, self.vertices.len),
+                );
+            } else {
+                c.glDrawElements(
+                    self.draw_type,
+                    @intCast(c_int, self.indices.len),
+                    c.GL_UNSIGNED_INT,
+                    null,
+                );
+            }
+            self.vao.unbind();
+        }
+
+        pub fn drawInstanced(self: Self, n: usize) void {
+            self.vao.bind();
+            if (self.indices.len == 0) {
+                c.glDrawArraysInstanced(
+                    self.draw_type,
+                    0.,
+                    @intCast(c_int, self.vertices.len),
+                    @intCast(c_int, n),
+                );
+            } else {
+                c.glDrawElementsInstanced(
+                    self.draw_type,
+                    @intCast(c_int, self.indices.len),
+                    c.GL_UNSIGNED_INT,
+                    null,
+                    @intCast(c_int, n),
+                );
+            }
+            self.vao.unbind();
+        }
+    };
+}
+
+pub const Location = struct {
+    const Self = @This();
+
+    const TextureData = struct {
+        select: c.GLenum,
+        bind_to: c.GLenum,
+        texture: *Texture,
+    };
+
+    location: c.GLint,
+
+    pub fn setFloat(self: Self, val: f32) void {
+        c.glUniform1f(self.location, val);
+    }
+
+    pub fn setInt(self: Self, val: i32) void {
+        c.glUniform1i(self.location, val);
+    }
+
+    pub fn setUint(self: Self, val: u32) void {
+        c.glUniform1ui(self.location, val);
+    }
+
+    pub fn setBool(self: Self, val: bool) void {
+        c.glUniform1i(self.location, if (val) 1 else 0);
+    }
+
+    pub fn setVec4(self: Self, val: math.Vec4(f32)) void {
+        c.glUniform4fv(self.location, 1, @ptrCast([*]const f32, &val));
+    }
+
+    pub fn setMat3(self: Self, val: math.Mat3) void {
+        c.glUniformMatrix3fv(
+            self.location,
+            1,
+            c.GL_FALSE,
+            @ptrCast([*]const f32, &val.data),
+        );
+    }
+
+    pub fn setTextureData(self: Self, data: TextureData) void {
+        self.setInt(@intCast(c_int, data.select - c.GL_TEXTURE0));
+        // TODO think abt doing this differtently
+        c.glActiveTexture(data.select);
+        c.glBindTexture(data.bind_to, data.texture.texture);
+    }
+};
+
+pub fn Instancer(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        ibo: Buffer(T),
+        data: []T,
+
+        pub fn init(data: []T) Self {
+            const ibo = Buffer(T).initNull(data.len, c.GL_STREAM_DRAW);
+            return .{
+                .ibo = ibo,
+                .data = data,
+            };
+        }
+
+        pub fn makeVertexArrayCompatible(self: Self, vao: VertexArray) void {
+            vao.bind();
+            self.ibo.bindTo(c.GL_ARRAY_BUFFER);
+            T.setAttributes(vao);
+            vao.unbind();
+        }
+
+        // caller is responsible for calling denint on the instancer
+        pub fn bind(self: *Self, comptime M: type, mesh: *const Mesh(M)) BoundInstancer(T, M) {
+            return BoundInstancer(T, M).init(self, mesh);
+        }
+    };
+}
+
+pub fn BoundInstancer(comptime T: type, comptime M: type) type {
+    return struct {
+        const Self = @This();
+
+        base: *Instancer(T),
+        mesh: *const Mesh(M),
+        idx: usize,
+
+        fn init(base: *Instancer(T), mesh: *const Mesh(M)) Self {
+            return .{
+                .base = base,
+                .mesh = mesh,
+                .idx = 0,
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            if (self.idx != 0) {
+                self.draw();
+            }
+        }
+
+        pub fn draw(self: *Self) void {
+            if (self.idx > 0) {
+                self.base.ibo.subData(0, self.base.data[0..self.idx]);
+                self.mesh.drawInstanced(self.idx);
+                self.idx = 0;
+            }
+        }
+
+        pub fn push(self: *Self, obj: T) void {
+            if (self.idx == self.base.data.len) {
+                self.draw();
+            }
+            self.base.data[self.idx] = obj;
+            self.idx += 1;
+        }
+
+        pub fn pull(self: *Self) *T {
+            if (self.idx == self.base.data.len) {
+                self.draw();
+            }
+            const ret = &self.base.data[self.idx];
+            self.idx += 1;
+            return ret;
         }
     };
 }

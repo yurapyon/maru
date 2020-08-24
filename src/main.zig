@@ -2,19 +2,14 @@ const std = @import("std");
 const c = @import("c.zig");
 const gfx = @import("gfx.zig");
 const flat = @import("flat.zig");
+const math = @import("math.zig");
 
 test "vert2d" {
     var arr: [4]flat.Vertex2d = undefined;
     flat.Vertex2d.genQuad(&arr, false);
-    for (arr) |v| {
-        std.log.warn("{}\n", .{v.position});
-    }
 
     var circle: [100]flat.Vertex2d = undefined;
     flat.Vertex2d.genCircle(&circle);
-    for (circle) |v| {
-        std.log.warn("{}\n", .{v.position});
-    }
 }
 
 test "gfx" {
@@ -31,8 +26,8 @@ test "gfx" {
         \\
         \\layout (location = 2) in vec4  _ext_sb_uv;
         \\layout (location = 3) in vec2  _ext_sb_position;
-        \\layout (location = 4) in vec2  _ext_sb_scale;
-        \\layout (location = 5) in float _ext_sb_rotation;
+        \\layout (location = 4) in float _ext_sb_rotation;
+        \\layout (location = 5) in vec2  _ext_sb_scale;
         \\layout (location = 6) in vec4  _ext_sb_color;
         \\
         \\// basic
@@ -82,6 +77,9 @@ test "gfx" {
         \\}
         \\
         \\vec3 effect() {
+        \\    // return vec3(_ext_vertex, 1.0);
+        \\    ready_spritebatch();
+        \\    return _screen * _view * _model * _sb_model * vec3(_ext_vertex, 1.0);
         \\    return _screen * _view * _model * vec3(_ext_vertex, 1.0);
         \\}
         \\
@@ -113,6 +111,7 @@ test "gfx" {
         \\float _time;
         \\
         \\vec4 effect() {
+        \\    return _base_color;
         \\    return _base_color * texture2D(_tx_diffuse, _uv_coord);
         \\}
         \\
@@ -132,20 +131,56 @@ test "gfx" {
     var tex = gfx.Texture.init(img);
     defer tex.deinit();
 
-    var circle: [100]flat.Vertex2d = undefined;
-    flat.Vertex2d.genCircle(&circle);
+    var quad: [4]flat.Vertex2d = undefined;
+    flat.Vertex2d.genQuad(&quad, false);
     var mesh = flat.Mesh2d.init(
-        &circle,
+        &quad,
         &[_]u32{},
         c.GL_STREAM_DRAW,
-        c.GL_TRIANGLE_FAN,
+        c.GL_TRIANGLE_STRIP,
     );
     defer mesh.deinit();
 
-    std.log.warn("success\n", .{});
+    const loc = prog.getLocation("_base_color");
+
+    const s_loc = prog.getLocation("_screen");
+    const v_loc = prog.getLocation("_view");
+    const m_loc = prog.getLocation("_model");
+
+    const mat3 = math.Mat3.identity();
+
+    var sprites: [500]flat.Spritebatch.Sprite = undefined;
+    var sb = flat.Spritebatch.init(&sprites);
+
+    std.log.warn("init success\n", .{});
 
     while (true) {
         c.glfwPollEvents();
+        c.glClear(c.GL_COLOR_BUFFER_BIT);
+
+        prog.bind();
+        loc.setVec4(math.Vec4(f32).init(1., 1., 1., 1.));
+
+        s_loc.setMat3(math.Mat3.orthoScreen(math.Vec2(u32).init(400, 400)));
+        v_loc.setMat3(math.Mat3.identity());
+        // m_loc.setMat3(math.Mat3.identity());
+        m_loc.setMat3(math.Mat3.fromTransform2d(math.Transform2d.init(-10., -10., 0., 1., 1.)));
+
+        {
+            var sp = sb.bind(false);
+            defer sp.deinit();
+
+            sp.pull().* = flat.Spritebatch.Sprite{
+                .uv = math.UvRegion.init(0., 0., 1., 1.),
+                .transform = math.Transform2d.init(10., 10., 0., 90., 90.),
+                .color = math.Color{ .r = 1., .g = 1., .b = 0., .a = 1. },
+            };
+
+            sp.draw();
+        }
+
+        // mesh.draw();
+
         c.glfwSwapBuffers(ctx.window);
     }
 }

@@ -5,7 +5,7 @@ const gfx = @import("gfx.zig");
 const math = @import("math.zig");
 const Vec2 = math.Vec2;
 
-pub const Vertex2d = struct {
+pub const Vertex2d = extern struct {
     const Self = @This();
 
     position: Vec2(f32),
@@ -54,9 +54,97 @@ pub const Vertex2d = struct {
         };
 
         vao.enableAttribute(0, temp);
+
         temp.offset = @byteOffsetOf(Self, "uv");
         vao.enableAttribute(1, temp);
     }
 };
 
 pub const Mesh2d = gfx.Mesh(Vertex2d);
+
+pub const Spritebatch = struct {
+    pub const Sprite = extern struct {
+        uv: math.UvRegion,
+        transform: math.Transform2d,
+        color: math.Color,
+
+        pub fn setAttributes(vao: gfx.VertexArray) void {
+            var temp = gfx.VertexAttribute{
+                .size = 4,
+                .ty = c.GL_FLOAT,
+                .is_normalized = false,
+                .stride = @sizeOf(Sprite),
+                .offset = @byteOffsetOf(Sprite, "uv"),
+                .divisor = 1,
+            };
+
+            vao.enableAttribute(2, temp);
+
+            temp.size = 2;
+            temp.offset = @byteOffsetOf(Sprite, "transform") +
+                @byteOffsetOf(math.Transform2d, "position");
+            vao.enableAttribute(3, temp);
+
+            temp.size = 1;
+            temp.offset = @byteOffsetOf(Sprite, "transform") +
+                @byteOffsetOf(math.Transform2d, "rotation");
+            vao.enableAttribute(4, temp);
+
+            temp.size = 2;
+            temp.offset = @byteOffsetOf(Sprite, "transform") +
+                @byteOffsetOf(math.Transform2d, "scale");
+            vao.enableAttribute(5, temp);
+
+            temp.size = 4;
+            temp.offset = @byteOffsetOf(Sprite, "color");
+            vao.enableAttribute(6, temp);
+        }
+    };
+
+    const Self = @This();
+    const Mesh = gfx.Mesh;
+    const Instancer = gfx.Instancer;
+    const BoundInstancer = gfx.BoundInstancer;
+
+    instancer: Instancer(Sprite),
+    quad_verts: [4]Vertex2d,
+    quad: Mesh2d,
+    quad_centered_verts: [4]Vertex2d,
+    quad_centered: Mesh2d,
+
+    pub fn init(data: []Sprite) Self {
+        var ret: Self = undefined;
+        ret.instancer = Instancer(Sprite).init(data);
+
+        Vertex2d.genQuad(&ret.quad_verts, false);
+        ret.quad = Mesh2d.init(
+            &ret.quad_verts,
+            &[_]u32{},
+            c.GL_STATIC_DRAW,
+            c.GL_TRIANGLE_STRIP,
+        );
+        ret.instancer.makeVertexArrayCompatible(ret.quad.vao);
+
+        Vertex2d.genQuad(&ret.quad_centered_verts, false);
+        ret.quad_centered = Mesh2d.init(
+            &ret.quad_centered_verts,
+            &[_]u32{},
+            c.GL_STATIC_DRAW,
+            c.GL_TRIANGLE_STRIP,
+        );
+        ret.instancer.makeVertexArrayCompatible(ret.quad_centered.vao);
+
+        return ret;
+    }
+
+    pub fn bind(
+        self: *Self,
+        centered: bool,
+    ) BoundInstancer(Sprite, Vertex2d) {
+        if (centered) {
+            return self.instancer.bind(Vertex2d, &self.quad);
+        } else {
+            return self.instancer.bind(Vertex2d, &self.quad_centered);
+        }
+    }
+};

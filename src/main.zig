@@ -1,8 +1,41 @@
 const std = @import("std");
-const c = @import("c.zig");
-const gfx = @import("gfx.zig");
-const flat = @import("flat.zig");
-const math = @import("math.zig");
+const nitori = @import("nitori");
+
+pub const c = @import("c.zig");
+pub const gfx = @import("gfx.zig");
+pub const flat = @import("flat.zig");
+pub const math = @import("math.zig");
+pub const states = @import("states.zig");
+
+//;
+
+// test "state machine" {
+//     const GlobalData = struct {};
+//
+//     const StateMachine = states.StateMachine(GlobalData);
+//
+//     const A = struct {
+//         state: StateMachine.State = .{
+//             .start = start,
+//             .stop = stop,
+//         },
+//
+//         fn init() @This() {
+//             return .{};
+//         }
+//
+//         fn deinit() void {}
+//
+//         fn start(state: *StateMachine.State, ctx: GlobalData) void {}
+//
+//         fn stop(state: *StateMachine.State, ctx: GlobalData) void {
+//             var self = @fieldParentPtr(A, "state", state);
+//             self.deinit();
+//         }
+//     };
+//
+//     const a = A.init();
+// }
 
 test "vert2d" {
     var arr: [4]flat.Vertex2d = undefined;
@@ -10,12 +43,19 @@ test "vert2d" {
 
     var circle: [100]flat.Vertex2d = undefined;
     flat.Vertex2d.genCircle(&circle);
+
+    var iter = nitori.ChunkIterator(flat.Vertex2d).init(&circle, 10);
+    while (iter.next()) |chunk| {
+        std.log.warn("{}\n", .{chunk});
+    }
 }
 
-test "gfx" {
+test "gfx main" {
+    const alloc = std.testing.allocator;
+
     const ctx = try gfx.Context.init(.{
-        .window_width = 400,
-        .window_height = 400,
+        .window_width = 800,
+        .window_height = 600,
     });
 
     var v_shd = try gfx.Shader.init(c.GL_VERTEX_SHADER,
@@ -125,8 +165,10 @@ test "gfx" {
     var prog = try gfx.Program.init(&[_]gfx.Shader{ v_shd, f_shd });
     defer prog.deinit();
 
-    var img = try gfx.Image.initFromFile("content/mahou.jpg");
-    defer img.deinit();
+    var img = try gfx.Image.initFromFile(alloc, "content/mahou.jpg");
+    defer img.deinit(alloc);
+
+    std.log.warn("{} {}\n", .{ img.width, img.height });
 
     var tex = gfx.Texture.init(img);
     defer tex.deinit();
@@ -161,7 +203,7 @@ test "gfx" {
         prog.bind();
         loc.setVec4(math.Vec4(f32).init(1., 1., 1., 1.));
 
-        s_loc.setMat3(math.Mat3.orthoScreen(math.Vec2(u32).init(400, 400)));
+        s_loc.setMat3(math.Mat3.orthoScreen(math.Vec2(u32).init(800, 600)));
         v_loc.setMat3(math.Mat3.identity());
         // m_loc.setMat3(math.Mat3.identity());
         m_loc.setMat3(math.Mat3.fromTransform2d(math.Transform2d.init(-10., -10., 0., 1., 1.)));
@@ -171,9 +213,7 @@ test "gfx" {
             defer sp.deinit();
 
             sp.pull().* = flat.Spritebatch.Sprite{
-                .uv = math.UvRegion.init(0., 0., 1., 1.),
                 .transform = math.Transform2d.init(10., 10., 0., 90., 90.),
-                .color = math.Color{ .r = 1., .g = 1., .b = 0., .a = 1. },
             };
 
             sp.draw();

@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 
 const c = @import("c.zig");
 const math = @import("math.zig");
@@ -166,31 +167,44 @@ pub const Program = struct {
     }
 };
 
-pub const u8Color = packed struct {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
-};
-
 pub const Image = struct {
     const Self = @This();
 
-    data: []u8Color,
+    pub const Color = extern struct {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    };
+
+    data: []Color,
     width: u32,
     height: u32,
 
-    pub fn initFromFile(path: [:0]const u8) !Self {
+    pub fn init(
+        allocator: *Allocator,
+        width: u32,
+        height: u32,
+    ) !Self {
+        const data_len = width * height;
+        const data = allocator.alloc(Color, data_len);
+        return Self{
+            .data = data,
+            .width = width,
+            .height = height,
+        };
+    }
+
+    pub fn initFromFile(allocator: *Allocator, path: [:0]const u8) !Self {
         var w: c_int = undefined;
         var h: c_int = undefined;
-        const raw_data = c.stbi_load(path, &w, &h, null, 4);
-        if (raw_data == null) {
-            // TODO
-            return error.ImageInitError;
-        }
-
+        const raw_data = c.stbi_load(path, &w, &h, null, 4) orelse return error.ImageInitError;
+        defer c.stbi_image_free(raw_data);
         const data_len = @intCast(usize, w * h);
-        const data = @ptrCast([*]u8Color, raw_data)[0..data_len];
+
+        var data = try allocator.alloc(Color, data_len);
+        // TODO alignment
+        std.mem.copy(Color, data, @ptrCast([*]Color, raw_data)[0..data_len]);
 
         return Self{
             .data = data,
@@ -199,8 +213,8 @@ pub const Image = struct {
         };
     }
 
-    pub fn deinit(self: *Self) void {
-        c.stbi_image_free(self.data.ptr);
+    pub fn deinit(self: *Self, allocator: *Allocator) void {
+        allocator.free(self.data);
     }
 };
 
@@ -391,7 +405,18 @@ pub const VertexArray = struct {
     }
 };
 
+// TODO
+pub const Canvas = struct {
+    const Self = @This();
+
+    pub fn init(width: u32, height: u32) Self {}
+
+    pub fn deinit(self: *Self) void {}
+};
+
+// TODO
 // for now doesnt own data
+// is that right
 pub fn Mesh(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -403,11 +428,6 @@ pub fn Mesh(comptime T: type) type {
         ebo: Buffer(u32),
         buffer_type: c.GLenum,
         draw_type: c.GLenum,
-
-        // TODO think abt how one might update verts later on
-        // could just edit the vbo directly
-        // change this to initWithData or idk
-        // initNull
 
         pub fn init(
             vertices: []const T,
@@ -503,7 +523,7 @@ pub const Location = struct {
         c.glUniform1i(self.location, val);
     }
 
-    pub fn setUint(self: Self, val: u32) void {
+    pub fn setUInt(self: Self, val: u32) void {
         c.glUniform1ui(self.location, val);
     }
 
@@ -526,7 +546,6 @@ pub const Location = struct {
 
     pub fn setTextureData(self: Self, data: TextureData) void {
         self.setInt(@intCast(c_int, data.select - c.GL_TEXTURE0));
-        // TODO think abt doing this differtently
         c.glActiveTexture(data.select);
         c.glBindTexture(data.bind_to, data.texture.texture);
     }
@@ -554,13 +573,14 @@ pub fn Instancer(comptime T: type) type {
             vao.unbind();
         }
 
-        // caller is responsible for calling denint on the instancer
+        // caller is responsible for calling deinit on the instancer
         pub fn bind(self: *Self, comptime M: type, mesh: *const Mesh(M)) BoundInstancer(T, M) {
             return BoundInstancer(T, M).init(self, mesh);
         }
     };
 }
 
+// TODO move up into Instancer ^^
 pub fn BoundInstancer(comptime T: type, comptime M: type) type {
     return struct {
         const Self = @This();

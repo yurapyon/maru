@@ -293,34 +293,3 @@ test "" {
     // var m = try json.parse(Map, &stream, .{ .allocator = alloc });
     // json.parseFree(Map, m, .{ .allocator = alloc });
 }
-
-// test "loop" {
-// ISSUE
-// const bError = error{SomeError};
-// const Blah = struct {
-//     const Self = @This();
-//     num: u8,
-
-//     fn init(num: u8) !Self {
-//         if (num > 5) {
-//             return error.SomeError;
-//         }
-
-//         return Self{
-//             .num = num,
-//         };
-//     }
-
-//     fn on_error(self: *Self) void {
-//         std.info.warn("{}\n", self.num);
-//     }
-// };
-
-// var i: u8 = 0;
-// var blahs: [10]Blah = undefined;
-// while (i < 10) : (i += 1) {
-// // ISSUE leaving off the try segfaults the compiler
-// blahs[i] = try Blah.init(i);
-// errdefer blahs[i].on_error();
-// }
-// }

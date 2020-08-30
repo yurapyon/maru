@@ -188,15 +188,34 @@ pub const Transform2d = extern struct {
             .scale = Vec2(f32).init(sx, sy),
         };
     }
+
+    pub fn identity() Self {
+        return Self.init(0., 0., 0., 1., 1.);
+    }
 };
 
 // ==
 
 pub const Color = extern struct {
+    const Self = @This();
+
     r: f32,
     g: f32,
     b: f32,
     a: f32,
+
+    pub fn init_rgba(r: f32, g: f32, b: f32, a: f32) Self {
+        return .{
+            .r = r,
+            .g = g,
+            .b = b,
+            .a = a,
+        };
+    }
+
+    pub fn white() Self {
+        return Self.init_rgba(1., 1., 1., 1.);
+    }
 };
 
 // ===

@@ -64,9 +64,9 @@ pub const Mesh2d = gfx.Mesh(Vertex2d);
 
 pub const Spritebatch = struct {
     pub const Sprite = extern struct {
-        uv: math.UvRegion,
-        transform: math.Transform2d,
-        color: math.Color,
+        uv: math.UvRegion = math.UvRegion.init(0., 0., 1., 1.),
+        transform: math.Transform2d = math.Transform2d.identity(),
+        color: math.Color = math.Color.white(),
 
         pub fn setAttributes(vao: gfx.VertexArray) void {
             var temp = gfx.VertexAttribute{

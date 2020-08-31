@@ -1,7 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const assert = std.debug.assert;
 
 const c = @import("c.zig");
+const events = @import("events.zig");
+const EventHandler = events.EventHandler;
 const math = @import("math.zig");
 
 const Error = error{
@@ -26,6 +29,7 @@ pub const Context = struct {
 
     settings: Settings,
     window: *c.GLFWwindow,
+    event_handler: ?EventHandler,
 
     fn windowSizeCallback(
         win: ?*c.GLFWwindow,
@@ -77,16 +81,34 @@ pub const Context = struct {
         settings_mut.window_width = @intCast(u32, w);
         settings_mut.window_height = @intCast(u32, h);
 
-        var ret = Self{
+        return Self{
             .settings = settings_mut,
             .window = window,
+            .event_handler = null,
         };
-        c.glfwSetWindowUserPointer(window, &ret);
-        return ret;
     }
 
-    fn deinit(self: *Self) void {
+    pub fn deinit(self: *Self) void {
+        if (self.event_handler) |*evs| {
+            evs.deinit();
+        }
         c.glfwDestroyWindow(self.window);
+    }
+
+    //;
+
+    pub fn updateGLFW_WindowUserPtr(self: *Self) void {
+        c.glfwSetWindowUserPointer(self.window, self);
+    }
+
+    pub fn getFromGLFW_WindowPtr(win: ?*c.GLFWwindow) *Context {
+        return @ptrCast(*Context, @alignCast(@alignOf(*Context), c.glfwGetWindowUserPointer(win).?));
+    }
+
+    pub fn installEventHandler(self: *Self, allocator: *Allocator) *EventHandler {
+        assert(self.event_handler == null);
+        self.event_handler = EventHandler.init(allocator, self.window);
+        return &self.event_handler.?;
     }
 };
 

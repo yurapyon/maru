@@ -22,10 +22,15 @@ test "" {
 test "gfx main" {
     const alloc = std.testing.allocator;
 
-    const ctx = try gfx.Context.init(.{
+    var ctx = try gfx.Context.init(.{
         .window_width = 800,
         .window_height = 600,
     });
+    defer ctx.deinit();
+
+    ctx.updateGLFW_WindowUserPtr();
+
+    var evs = ctx.installEventHandler(alloc);
 
     var prog = try flat.Program2d.initDefaultSpritebatch(alloc);
     defer prog.deinit();
@@ -46,14 +51,6 @@ test "gfx main" {
     );
     defer mesh.deinit();
 
-    // const loc = prog.getLocation("_base_color");
-
-    // const s_loc = prog.program.getLocation("_screen");
-    // const v_loc = prog.getLocation("_view");
-    // const m_loc = prog.getLocation("_model");
-
-    // const tx_loc = prog.getLocation("_tx_diffuse");
-
     prog.locations.tx_diffuse.setTextureData(.{
         .select = c.GL_TEXTURE0,
         .bind_to = c.GL_TEXTURE_2D,
@@ -66,7 +63,13 @@ test "gfx main" {
     var sb = flat.Spritebatch.init(&sprites);
 
     while (c.glfwWindowShouldClose(ctx.window) == c.GLFW_FALSE) {
-        c.glfwPollEvents();
+        // c.glfwPollEvents();
+        evs.poll();
+
+        for (evs.char_events.items) |ev| {
+            std.log.warn("{}\n", .{ev});
+        }
+
         c.glClear(c.GL_COLOR_BUFFER_BIT);
 
         prog.program.bind();

@@ -1,7 +1,18 @@
 const std = @import("std");
 
+//;
+
+fn assertIsNumberType(comptime T: type) void {
+    const type_info = @typeInfo(T);
+    std.debug.assert(type_info == .Float or type_info == .Int);
+}
+
 pub fn Vec2(comptime T: type) type {
     return extern struct {
+        comptime {
+            assertIsNumberType(T);
+        }
+
         const Self = @This();
 
         x: T,
@@ -13,6 +24,29 @@ pub fn Vec2(comptime T: type) type {
                 .y = y,
             };
         }
+
+        pub fn zero() Self {
+            if (@typeInfo(T) == .Float) {
+                return .{
+                    .x = 0.,
+                    .y = 0.,
+                };
+            } else if (@typeInfo(T) == .Int) {
+                return .{
+                    .x = 0,
+                    .y = 0,
+                };
+            }
+        }
+
+        //;
+
+        pub fn isEqualTo(self: Self, other: Self) bool {
+            return self.x == other.x and
+                self.y == other.y;
+        }
+
+        //;
 
         pub fn add(self: Self, other: Self) Self {
             return .{
@@ -27,11 +61,31 @@ pub fn Vec2(comptime T: type) type {
                 .y = self.y - other.y,
             };
         }
+
+        //;
+
+        pub fn multMat3(self: Vec2(f32), matr: Mat3) Vec2(f32) {
+            return .{
+                .x = self.x * matr.data[0][0] + self.y * matr.data[1][0] + matr.data[2][0],
+                .y = self.x * matr.data[0][1] + self.y * matr.data[1][1] + matr.data[2][1],
+            };
+        }
     };
+}
+
+test "Vec2" {
+    const f_zero = Vec2(f32).zero();
+    const d_zero = Vec2(f64).zero();
+    const i_zero = Vec2(u8).zero();
+    const u_zero = Vec2(i8).zero();
 }
 
 pub fn Vec3(comptime T: type) type {
     return extern struct {
+        comptime {
+            assertIsNumberType(T);
+        }
+
         const Self = @This();
 
         x: T,
@@ -45,6 +99,16 @@ pub fn Vec3(comptime T: type) type {
                 .z = z,
             };
         }
+
+        //;
+
+        pub fn isEqualTo(self: Self, other: Self) bool {
+            return self.x == other.x and
+                self.y == other.y and
+                self.z == other.z;
+        }
+
+        //;
 
         pub fn add(self: Self, other: Self) Self {
             return .{
@@ -61,11 +125,25 @@ pub fn Vec3(comptime T: type) type {
                 .z = self.z - other.z,
             };
         }
+
+        //;
+
+        pub fn multMat3(self: Vec3(f32), matr: Mat3) Vec3(f32) {
+            return .{
+                .x = self.x * matr.data[0][0] + self.y * matr.data[1][0] + self.z * matr.data[2][0],
+                .y = self.x * matr.data[0][1] + self.y * matr.data[1][1] + self.z * matr.data[2][1],
+                .z = self.x * matr.data[0][2] + self.y * matr.data[1][2] + self.z * matr.data[2][2],
+            };
+        }
     };
 }
 
 pub fn Vec4(comptime T: type) type {
     return extern struct {
+        comptime {
+            assertIsNumberType(T);
+        }
+
         const Self = @This();
 
         x: T,
@@ -81,6 +159,17 @@ pub fn Vec4(comptime T: type) type {
                 .w = w,
             };
         }
+
+        //;
+
+        pub fn isEqualTo(self: Self, other: Self) bool {
+            return self.x == other.x and
+                self.y == other.y and
+                self.z == other.z and
+                self.w == other.w;
+        }
+
+        //;
 
         pub fn add(self: Self, other: Self) Self {
             return .{
@@ -102,7 +191,7 @@ pub fn Vec4(comptime T: type) type {
     };
 }
 
-// ===
+//;
 
 pub const Mat3 = struct {
     const Self = @This();
@@ -131,6 +220,38 @@ pub const Mat3 = struct {
         return ret;
     }
 
+    pub fn translation(vec: Vec2(f32)) Self {
+        var ret = Self.identity();
+        ret.data[2][0] = vec.x;
+        ret.data[2][1] = vec.y;
+        return ret;
+    }
+
+    pub fn rotation(rads: f32) Self {
+        var ret = Self.identity();
+        const rc = std.math.cos(rads);
+        const rs = std.math.sin(rads);
+        ret.data[0][0] = rc;
+        ret.data[0][1] = rs;
+        ret.data[1][0] = -rs;
+        ret.data[1][1] = rc;
+        return ret;
+    }
+
+    pub fn scaling(vec: Vec2(f32)) Self {
+        var ret = Self.identity();
+        ret.data[0][0] = vec.x;
+        ret.data[1][1] = vec.y;
+        return ret;
+    }
+
+    pub fn shearing(vec: Vec2(f32)) Self {
+        var ret = Self.identity();
+        ret.data[1][0] = vec.x;
+        ret.data[0][1] = vec.y;
+        return ret;
+    }
+
     pub fn orthoScreen(dimensions: Vec2(u32)) Self {
         var ret = Self.identity();
         ret.data[0][0] = 2. / @intToFloat(f32, dimensions.x);
@@ -154,12 +275,74 @@ pub const Mat3 = struct {
         ret.data[2][1] = t2d.position.y;
         return ret;
     }
+
+    //;
+
+    pub fn isEqualTo(self: Self, other: Self) bool {
+        return self.data[0][0] == other.data[0][0] and
+            self.data[1][0] == other.data[1][0] and
+            self.data[2][0] == other.data[2][0] and
+            self.data[0][1] == other.data[0][1] and
+            self.data[1][1] == other.data[1][1] and
+            self.data[2][1] == other.data[2][1] and
+            self.data[0][2] == other.data[0][2] and
+            self.data[1][2] == other.data[1][2] and
+            self.data[2][2] == other.data[2][2];
+    }
+
+    //;
+
+    // TODO inverse / transpose
+    // test m * m' == iden
+
+    pub fn mult(self: Self, other: Self) Self {
+        const s = &self.data;
+        const o = &other.data;
+        return .{
+            .data = .{
+                .{
+                    s[0][0] * o[0][0] + s[0][1] * o[1][0] + s[0][2] * o[2][0],
+                    s[0][0] * o[0][1] + s[0][1] * o[1][1] + s[0][2] * o[2][1],
+                    s[0][0] * o[0][2] + s[0][1] * o[1][2] + s[0][2] * o[2][2],
+                },
+                .{
+                    s[1][0] * o[0][0] + s[1][1] * o[1][0] + s[1][2] * o[2][0],
+                    s[1][0] * o[0][1] + s[1][1] * o[1][1] + s[1][2] * o[2][1],
+                    s[1][0] * o[0][2] + s[1][1] * o[1][2] + s[1][2] * o[2][2],
+                },
+                .{
+                    s[2][0] * o[0][0] + s[2][1] * o[1][0] + s[2][2] * o[2][0],
+                    s[2][0] * o[0][1] + s[2][1] * o[1][1] + s[2][2] * o[2][1],
+                    s[2][0] * o[0][2] + s[2][1] * o[1][2] + s[2][2] * o[2][2],
+                },
+            },
+        };
+    }
 };
 
-// ===
+const testing = std.testing;
+const expect = testing.expect;
+
+// TODO more tests
+test "Mat3" {
+    const iden = Mat3.identity();
+    const trans = Mat3.translation(Vec2(f32).init(10., 15.));
+    expect(trans.isEqualTo(iden.mult(trans)));
+    expect(trans.isEqualTo(trans.mult(iden)));
+
+    const v2 = Vec2(f32).init(0., 0.);
+    const mul = v2.multMat3(trans);
+    expect(mul.isEqualTo(Vec2(f32).init(10., 15.)));
+}
+
+//;
 
 pub fn AABB(comptime T: type) type {
     return extern struct {
+        comptime {
+            assertIsNumberType(T);
+        }
+
         const Self = @This();
 
         c1: Vec2(T),
@@ -173,6 +356,11 @@ pub fn AABB(comptime T: type) type {
         }
     };
 }
+
+pub const TextureRegion = AABB(i32);
+pub const UV_Region = AABB(f32);
+
+//;
 
 pub const Transform2d = extern struct {
     const Self = @This();
@@ -194,7 +382,7 @@ pub const Transform2d = extern struct {
     }
 };
 
-// ==
+//;
 
 pub const Color = extern struct {
     const Self = @This();
@@ -204,7 +392,7 @@ pub const Color = extern struct {
     b: f32,
     a: f32,
 
-    pub fn init_rgba(r: f32, g: f32, b: f32, a: f32) Self {
+    pub fn initRgba(r: f32, g: f32, b: f32, a: f32) Self {
         return .{
             .r = r,
             .g = g,
@@ -214,11 +402,6 @@ pub const Color = extern struct {
     }
 
     pub fn white() Self {
-        return Self.init_rgba(1., 1., 1., 1.);
+        return Self.initRgba(1., 1., 1., 1.);
     }
 };
-
-// ===
-
-pub const UvRegion = AABB(f32);
-pub const TextureRegion = AABB(i32);

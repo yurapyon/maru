@@ -3,12 +3,6 @@ const Builder = @import("std").build.Builder;
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
 
-    // TODO idk what this is
-    const lib = b.addStaticLibrary("maru", "src/main.zig");
-    lib.setBuildMode(mode);
-    lib.addCSourceFile("ext/stb/stb_image.c", &[_][]const u8{"-std=c99"});
-    lib.install();
-
     var main_tests = b.addTest("src/main.zig");
     main_tests.setBuildMode(mode);
     main_tests.addCSourceFile("deps/stb/stb_image.c", &[_][]const u8{"-std=c99"});

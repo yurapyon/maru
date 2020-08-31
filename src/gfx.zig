@@ -95,7 +95,7 @@ pub const Shader = struct {
 
     shader: c.GLuint,
 
-    pub fn init(ty: c.GLenum, source: [:0]const u8) !Self {
+    pub fn init(ty: c.GLenum, source: []const u8) !Self {
         const shader = c.glCreateShader(ty);
         errdefer c.glDeleteShader(shader);
 
@@ -192,6 +192,31 @@ pub const Image = struct {
             .data = data,
             .width = width,
             .height = height,
+        };
+    }
+
+    pub fn initFromMemory(allocator: *Allocator, buffer: []const u8) !Self {
+        var w: c_int = undefined;
+        var h: c_int = undefined;
+        const raw_data = c.stbi_load_from_memory(
+            buffer.ptr,
+            @intCast(c_int, buffer.len),
+            &w,
+            &h,
+            null,
+            4,
+        ) orelse return error.ImageInitError;
+        defer c.stbi_image_free(raw_data);
+        const data_len = @intCast(usize, w * h);
+
+        var data = try allocator.alloc(Color, data_len);
+        // TODO alignment
+        std.mem.copy(Color, data, @ptrCast([*]Color, raw_data)[0..data_len]);
+
+        return Self{
+            .data = data,
+            .width = @intCast(u32, w),
+            .height = @intCast(u32, h),
         };
     }
 

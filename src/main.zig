@@ -66,7 +66,17 @@ test "gfx main" {
         // c.glfwPollEvents();
         evs.poll();
 
-        for (evs.char_events.items) |ev| {
+        for (evs.key_events.items) |ev| {
+            if (ev.key == .Space) {
+                for (evs.gamepads) |gpd| {
+                    if (gpd.is_connected) {
+                        std.log.warn("{}\n", .{gpd});
+                    }
+                }
+            }
+        }
+
+        for (evs.joystick_events.items) |ev| {
             std.log.warn("{}\n", .{ev});
         }
 

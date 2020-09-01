@@ -8,6 +8,45 @@ const gfx = @import("gfx.zig");
 
 //;
 
+pub const Action = enum(u8) {
+    const Self = @This();
+
+    Press,
+    Repeat,
+    Release,
+
+    pub fn init(raw_action: c_int) Self {
+        return switch (raw_action) {
+            c.GLFW_PRESS => Self.Press,
+            c.GLFW_REPEAT => Self.Repeat,
+            c.GLFW_RELEASE => Self.Release,
+            else => unreachable,
+        };
+    }
+};
+
+pub const Mods = packed struct {
+    const Self = @This();
+
+    shift: bool,
+    control: bool,
+    alt: bool,
+    super: bool,
+    caps_lock: bool,
+    num_lock: bool,
+
+    pub fn init(raw_mods: c_int) Self {
+        return .{
+            .shift = (raw_mods & c.GLFW_MOD_SHIFT) != 0,
+            .control = (raw_mods & c.GLFW_MOD_CONTROL) != 0,
+            .alt = (raw_mods & c.GLFW_MOD_ALT) != 0,
+            .super = (raw_mods & c.GLFW_MOD_SUPER) != 0,
+            .caps_lock = (raw_mods & c.GLFW_MOD_CAPS_LOCK) != 0,
+            .num_lock = (raw_mods & c.GLFW_MOD_NUM_LOCK) != 0,
+        };
+    }
+};
+
 pub const KeyEvent = struct {
     const Self = @This();
 
@@ -135,46 +174,17 @@ pub const KeyEvent = struct {
         Menu = 348,
     };
 
-    pub const Action = enum {
-        Press,
-        Repeat,
-        Release,
-    };
-
-    pub const Mods = packed struct {
-        shift: bool,
-        control: bool,
-        alt: bool,
-        super: bool,
-        caps_lock: bool,
-        num_lock: bool,
-    };
-
     key: Key,
     scancode: ?u32,
     action: Action,
     mods: Mods,
 
-    fn init(key: c_int, scancode: c_int, action: c_int, raw_mods: c_int) Self {
-        const mods = .{
-            .shift = (raw_mods & c.GLFW_MOD_SHIFT) != 0,
-            .control = (raw_mods & c.GLFW_MOD_CONTROL) != 0,
-            .alt = (raw_mods & c.GLFW_MOD_ALT) != 0,
-            .super = (raw_mods & c.GLFW_MOD_SUPER) != 0,
-            .caps_lock = (raw_mods & c.GLFW_MOD_CAPS_LOCK) != 0,
-            .num_lock = (raw_mods & c.GLFW_MOD_NUM_LOCK) != 0,
-        };
-
+    fn init(key: c_int, scancode: c_int, action: c_int, mods: c_int) Self {
         return .{
             .key = @intToEnum(Key, @intCast(i16, key)),
             .scancode = if (scancode < 0) null else @intCast(u32, scancode),
-            .action = switch (action) {
-                c.GLFW_PRESS => Action.Press,
-                c.GLFW_REPEAT => Action.Repeat,
-                c.GLFW_RELEASE => Action.Release,
-                else => unreachable,
-            },
-            .mods = mods,
+            .action = Action.init(action),
+            .mods = Mods.init(mods),
         };
     }
 };
@@ -192,25 +202,160 @@ pub const CharEvent = struct {
     }
 };
 
-// TODO joystick/ gamepad
-//  mouse events, cursor motion/ buttons
+pub const MouseEvent = union(enum) {
+    const Self = @This();
+
+    pub const MoveEvent = struct {
+        x: f64,
+        y: f64,
+    };
+
+    pub const ButtonEvent = struct {
+        pub const Button = enum(u8) {
+            Left = 0,
+            Right = 1,
+            Middle = 2,
+            MB_4 = 3,
+            MB_5 = 4,
+            MB_6 = 5,
+            MB_7 = 6,
+            MB_8 = 7,
+        };
+
+        button: Button,
+        action: Action,
+        mods: Mods,
+
+        pub fn init(button: c_int, action: c_int, mods: c_int) ButtonEvent {
+            return .{
+                .button = @intToEnum(Button, @intCast(u8, button)),
+                .action = Action.init(action),
+                .mods = Mods.init(mods),
+            };
+        }
+    };
+
+    pub const EnterEvent = struct {
+        entered: bool,
+    };
+
+    pub const ScrollEvent = struct {
+        x: f64,
+        y: f64,
+    };
+
+    Move: MoveEvent,
+    Button: ButtonEvent,
+    Enter: EnterEvent,
+    Scroll: ScrollEvent,
+};
+
+pub const JoystickEvent = struct {
+    id: u8,
+    is_connected: bool,
+};
+
+pub const GamepadData = struct {
+    pub const Button = enum(usize) {
+        A,
+        B,
+        X,
+        Y,
+        LeftBumper,
+        RightBumper,
+        Back,
+        Start,
+        Guide,
+        LeftThumb,
+        RightThumb,
+        DPadUp,
+        DPadRight,
+        DPadDown,
+        DPadLeft,
+    };
+
+    pub const Axis = enum(usize) {
+        LeftX,
+        LeftY,
+        RightX,
+        RightY,
+        LeftTrigger,
+        RightTrigger,
+    };
+
+    is_connected: bool,
+    buttons: [15]Action,
+    axes: [6]f32,
+
+    pub fn getButtonState(self: Self, button: Button) Action {
+        return self.buttons[@enumToInt(button)];
+    }
+
+    pub fn getAxisState(self: Self, axis: Axis) f32 {
+        return self.axes[@enumToInt(axis)];
+    }
+};
+
+// TODO
+//   update mappings
+//     allow player to put in thier own mappings if they need to
+//   look into how calibration works
 
 pub const EventHandler = struct {
     const Self = @This();
 
     key_events: ArrayList(KeyEvent),
     char_events: ArrayList(CharEvent),
+    mouse_events: ArrayList(MouseEvent),
+    joystick_events: ArrayList(JoystickEvent),
+    gamepads: [c.GLFW_JOYSTICK_LAST + 1]GamepadData,
 
     pub fn init(allocator: *Allocator, window: *c.GLFWwindow) Self {
         _ = c.glfwSetKeyCallback(window, keyCallback);
         _ = c.glfwSetCharCallback(window, charCallback);
-        return .{
+
+        _ = c.glfwSetCursorPosCallback(window, cursorPosCallback);
+        _ = c.glfwSetCursorEnterCallback(window, cursorEnterCallback);
+        _ = c.glfwSetMouseButtonCallback(window, mouseButtonCallback);
+        _ = c.glfwSetScrollCallback(window, scrollCallback);
+
+        _ = c.glfwSetJoystickCallback(joystickCallback);
+
+        var ret = Self{
             .key_events = ArrayList(KeyEvent).init(allocator),
             .char_events = ArrayList(CharEvent).init(allocator),
+            .mouse_events = ArrayList(MouseEvent).init(allocator),
+            .joystick_events = ArrayList(JoystickEvent).init(allocator),
+            .gamepads = undefined,
         };
+
+        // TODO handle notifying if gmae boots with joystick connected
+        // TODO no code duplication
+        var id: c_int = 0;
+        while (id < c.GLFW_JOYSTICK_LAST) : (id += 1) {
+            if (c.glfwJoystickPresent(id) == c.GLFW_TRUE) {
+                if (c.glfwJoystickIsGamepad(id) == c.GLFW_TRUE) {
+                    // TODO could poll state here, just for completeness
+                    ret.gamepads[@intCast(usize, id)] = .{
+                        .is_connected = true,
+                        .buttons = undefined,
+                        .axes = undefined,
+                    };
+                } else {
+                    // TODO
+                    // joysticks not supported
+                }
+            } else {
+                ret.gamepads[@intCast(usize, id)].is_connected = false;
+            }
+        }
+
+        return ret;
     }
 
     pub fn deinit(self: *Self) void {
+        self.joystick_events.deinit();
+        self.mouse_events.deinit();
         self.char_events.deinit();
         self.key_events.deinit();
     }
@@ -218,7 +363,32 @@ pub const EventHandler = struct {
     pub fn poll(self: *Self) void {
         self.key_events.items.len = 0;
         self.char_events.items.len = 0;
+        self.mouse_events.items.len = 0;
+        self.joystick_events.items.len = 0;
+
         c.glfwPollEvents();
+
+        // update gamepad data
+        //  by this time, all gamepads in self.gamepads must be:
+        //    currently connected
+        //    not joysticks
+        for (self.gamepads) |*gpd, id| {
+            if (gpd.is_connected) {
+                var state: c.GLFWgamepadstate = undefined;
+                // TODO assert this returns true?
+                //   technically should be
+                //     means that it is connected and is a gamepad
+                _ = c.glfwGetGamepadState(@intCast(c_int, id), &state);
+
+                for (state.buttons) |action, i| {
+                    gpd.buttons[i] = Action.init(action);
+                }
+
+                for (state.axes) |val, i| {
+                    gpd.axes[i] = val;
+                }
+            }
+        }
     }
 
     //;
@@ -244,5 +414,88 @@ pub const EventHandler = struct {
         var ctx = gfx.Context.getFromGLFW_WindowPtr(win);
         var evs = &ctx.event_handler.?;
         evs.char_events.append(CharEvent.init(codepoint)) catch unreachable;
+    }
+
+    fn cursorPosCallback(
+        win: ?*c.GLFWwindow,
+        x: f64,
+        y: f64,
+    ) callconv(.C) void {
+        var ctx = gfx.Context.getFromGLFW_WindowPtr(win);
+        var evs = &ctx.event_handler.?;
+        evs.mouse_events.append(.{
+            .Move = .{
+                .x = x,
+                .y = y,
+            },
+        }) catch unreachable;
+    }
+
+    fn cursorEnterCallback(
+        win: ?*c.GLFWwindow,
+        entered: c_int,
+    ) callconv(.C) void {
+        var ctx = gfx.Context.getFromGLFW_WindowPtr(win);
+        var evs = &ctx.event_handler.?;
+        evs.mouse_events.append(.{
+            .Enter = .{
+                .entered = entered == c.GLFW_TRUE,
+            },
+        }) catch unreachable;
+    }
+
+    fn mouseButtonCallback(
+        win: ?*c.GLFWwindow,
+        button: c_int,
+        action: c_int,
+        mods: c_int,
+    ) callconv(.C) void {
+        var ctx = gfx.Context.getFromGLFW_WindowPtr(win);
+        var evs = &ctx.event_handler.?;
+        evs.mouse_events.append(.{
+            .Button = MouseEvent.ButtonEvent.init(button, action, mods),
+        }) catch unreachable;
+    }
+
+    fn scrollCallback(
+        win: ?*c.GLFWwindow,
+        x: f64,
+        y: f64,
+    ) callconv(.C) void {
+        var ctx = gfx.Context.getFromGLFW_WindowPtr(win);
+        var evs = &ctx.event_handler.?;
+        evs.mouse_events.append(.{
+            .Scroll = .{
+                .x = x,
+                .y = y,
+            },
+        }) catch unreachable;
+    }
+
+    fn joystickCallback(
+        id: c_int,
+        event: c_int,
+    ) callconv(.C) void {
+        if (gfx.joystick_ctx_reference) |ctx| {
+            var evs = &ctx.event_handler.?;
+
+            if (event == c.GLFW_CONNECTED) {
+                if (c.glfwJoystickIsGamepad(id) == c.GLFW_TRUE) {
+                    evs.gamepads[@intCast(usize, id)].is_connected = true;
+                    evs.joystick_events.append(.{
+                        .id = @intCast(u8, id),
+                        .is_connected = true,
+                    }) catch unreachable;
+                } else {
+                    // TODO error or something, joysticks that arent gamepads arent supported
+                }
+            } else if (event == c.GLFW_DISCONNECTED) {
+                evs.gamepads[@intCast(usize, id)].is_connected = false;
+                evs.joystick_events.append(.{
+                    .id = @intCast(u8, id),
+                    .is_connected = false,
+                }) catch unreachable;
+            }
+        }
     }
 };

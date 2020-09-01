@@ -7,6 +7,8 @@ const events = @import("events.zig");
 const EventHandler = events.EventHandler;
 const math = @import("math.zig");
 
+pub var joystick_ctx_reference: ?*Context = null;
+
 const Error = error{
     ContextInitError,
     ShaderCompilationError,
@@ -99,10 +101,15 @@ pub const Context = struct {
 
     pub fn updateGLFW_WindowUserPtr(self: *Self) void {
         c.glfwSetWindowUserPointer(self.window, self);
+        joystick_ctx_reference = self;
     }
 
     pub fn getFromGLFW_WindowPtr(win: ?*c.GLFWwindow) *Context {
         return @ptrCast(*Context, @alignCast(@alignOf(*Context), c.glfwGetWindowUserPointer(win).?));
+    }
+
+    pub fn getFromGLFW_JoystickId(id: c_int) *Context {
+        return @ptrCast(*Context, @alignCast(@alignOf(*Context), c.glfwGetJoystickUserPointer(id).?));
     }
 
     pub fn installEventHandler(self: *Self, allocator: *Allocator) *EventHandler {

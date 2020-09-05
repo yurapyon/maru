@@ -195,10 +195,6 @@ pub const BoundSpritebatch = struct {
 
     //;
 
-    fn init() Self {
-        //;
-    }
-
     pub fn deinit(self: *Self) void {
         self.sprites.deinit();
     }

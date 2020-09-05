@@ -296,10 +296,44 @@ pub const GamepadData = struct {
     }
 };
 
+// pub const GamepadEvent = union(enum) {
+//     const ButtonEvent = struct {
+//         id: u8,
+//         button: GamepadData.Button,
+//         action: Action,
+//     };
+//
+//     const AxisEvent = struct {
+//         id: u8,
+//         axis: GamepadData.Axis,
+//         delta: f32,
+//         position: f32,
+//     };
+//
+//     const ConnectionEvent = struct {
+//         id: u8,
+//         is_connected: bool,
+//     };
+//
+//     Connection: ConnectionEvent,
+//     Button: ButtonEvent,
+//     Axis: AxisEvent,
+// };
+//
+// pub const Event = union(enum) {
+//     Key: KeyEvent,
+//     Char: CharEvent,
+//     Mouse: MouseEvent,
+//     Joystick: JoystickEvent,
+//     GamepadEvent: GamepadEvent,
+// };
+
 // TODO
 //   update mappings
 //     allow player to put in thier own mappings if they need to
 //   look into how calibration works
+// note, by not using one array for events,
+//   info is lost what time events come in, probably not a huge problem
 
 pub const EventHandler = struct {
     const Self = @This();
@@ -330,6 +364,7 @@ pub const EventHandler = struct {
         };
 
         // TODO handle notifying if gmae boots with joystick connected
+        //   cant just push to joystick_events, cuz its cleared on poll
         // TODO no code duplication
         var id: c_int = 0;
         while (id < c.GLFW_JOYSTICK_LAST) : (id += 1) {

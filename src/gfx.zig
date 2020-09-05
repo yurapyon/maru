@@ -46,7 +46,7 @@ pub const Context = struct {
         }
     }
 
-    pub fn init(settings: Settings) !Self {
+    pub fn init(self: *Self, settings: Settings) !void {
         if (c.glfwInit() != c.GLFW_TRUE) {
             return error.ContextInitError;
         }
@@ -84,11 +84,12 @@ pub const Context = struct {
         settings_mut.window_width = @intCast(u32, w);
         settings_mut.window_height = @intCast(u32, h);
 
-        return Self{
-            .settings = settings_mut,
-            .window = window,
-            .event_handler = null,
-        };
+        self.settings = settings_mut;
+        self.window = window;
+        self.event_handler = null;
+
+        c.glfwSetWindowUserPointer(window, self);
+        joystick_ctx_reference = self;
     }
 
     pub fn deinit(self: *Self) void {
@@ -101,11 +102,6 @@ pub const Context = struct {
 
     //;
 
-    pub fn updateGLFW_WindowUserPtr(self: *Self) void {
-        c.glfwSetWindowUserPointer(self.window, self);
-        joystick_ctx_reference = self;
-    }
-
     pub fn getFromGLFW_WindowPtr(win: ?*c.GLFWwindow) *Context {
         return @ptrCast(*Context, @alignCast(@alignOf(*Context), c.glfwGetWindowUserPointer(win).?));
     }
@@ -114,12 +110,16 @@ pub const Context = struct {
         return @ptrCast(*Context, @alignCast(@alignOf(*Context), c.glfwGetJoystickUserPointer(id).?));
     }
 
-    pub fn installEventHandler(self: *Self, allocator: *Allocator) *EventHandler {
-        assert(self.event_handler == null);
-        self.event_handler = EventHandler.init(allocator, self.window);
-        return &self.event_handler.?;
+    // TODO rename to getEventHandler or something
+    // can acutually just not return anything
+    pub fn installEventHandler(self: *Self, allocator: *Allocator) void {
+        if (self.event_handler == null) {
+            self.event_handler = EventHandler.init(allocator, self.window);
+        }
     }
 };
+
+//;
 
 pub const Shader = struct {
     const Self = @This();

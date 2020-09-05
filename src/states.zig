@@ -10,7 +10,7 @@ const Allocator = std.mem.Allocator;
 
 // global resources needs a way to allocate new state data
 
-pub fn StateMachine(comptime T: type, comptime E: type) type {
+pub fn StateMachine(comptime T: type) type {
     return struct {
         const Self = @This();
 
@@ -22,7 +22,6 @@ pub fn StateMachine(comptime T: type, comptime E: type) type {
                 stop: ?fn (*Impl, T) void,
                 pause: ?fn (*Impl, T) void,
                 unpause: ?fn (*Impl, T) void,
-                handleEvent: ?fn (*Impl, T, E) void,
                 frame: ?fn (*Impl, T) ?Transition,
                 fixed_frame: ?fn (*Impl, T) void,
                 frame_hidden: ?fn (*Impl, T) void,
@@ -32,7 +31,6 @@ pub fn StateMachine(comptime T: type, comptime E: type) type {
                 pub fn stop(_s: *Impl, _t: T) void {}
                 pub fn pause(_s: *Impl, _t: T) void {}
                 pub fn unpause(_s: *Impl, _t: T) void {}
-                pub fn handleEvent(_s: *Impl, _t: T, _e: E) void {}
                 pub fn frame(_s: *Impl, _t: T) ?Transition {
                     return null;
                 }
@@ -65,10 +63,6 @@ pub fn StateMachine(comptime T: type, comptime E: type) type {
 
             pub fn unpause(self: *State, immut_data: T) void {
                 self.vtable.unpause.?(self.impl, immut_data);
-            }
-
-            pub fn handleEvent(self: *State, immut_data: T, event: E) void {
-                self.vtable.handleEvent.?(self.impl, immut_data, event);
             }
 
             pub fn frame(self: *State, immut_data: T) ?Transition {
@@ -130,28 +124,22 @@ pub fn StateMachine(comptime T: type, comptime E: type) type {
             }
         }
 
-        pub fn handleEvent(self: *Self, immut_data: T, event: E) void {
-            assert(self.states.items.len > 0);
-            var state = self.states.items[self.states.items.len - 1];
-            state.handleEvent(immut_data, event);
-        }
-
         pub fn frame(self: *Self, immut_data: T) void {
             assert(self.states.items.len > 0);
-            var i = 0;
+            var i: usize = 0;
             while (i < self.states.items.len - 1) : (i += 1) {
                 self.states.items[i].frame_hidden(immut_data);
             }
-            self.transition = self.states.items[self.states.items.len].frame(immut_data);
+            self.transition = self.states.items[self.states.items.len - 1].frame(immut_data);
         }
 
         pub fn fixed_frame(self: *Self, immut_data: T) void {
             assert(self.states.items.len > 0);
-            var i = 0;
+            var i: usize = 0;
             while (i < self.states.items.len - 1) : (i += 1) {
                 self.states.items[i].fixed_frame_hidden(immut_data);
             }
-            self.states.items[self.states.items.len].fixed_frame(immut_data);
+            self.states.items[self.states.items.len - 1].fixed_frame(immut_data);
         }
 
         //;

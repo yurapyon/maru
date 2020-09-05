@@ -50,6 +50,7 @@ pub const Context = struct {
         if (c.glfwInit() != c.GLFW_TRUE) {
             return error.ContextInitError;
         }
+        errdefer c.glfwTerminate();
 
         c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MAJOR, @intCast(c_int, settings.ogl_version_major));
         c.glfwWindowHint(c.GLFW_CONTEXT_VERSION_MINOR, @intCast(c_int, settings.ogl_version_minor));
@@ -95,6 +96,7 @@ pub const Context = struct {
             evs.deinit();
         }
         c.glfwDestroyWindow(self.window);
+        c.glfwTerminate();
     }
 
     //;
@@ -124,6 +126,11 @@ pub const Shader = struct {
 
     shader: c.GLuint,
 
+    // TODO by taking a slice of strings rather than a single string,
+    //   flat namespace wont need an allocator for default shader
+    //   problem is you gotta turn that slice of slices into a slice of ptrs
+    //   or take a slice of ptrs which isnt as nice.
+    //   sentineled ptrs?
     pub fn init(ty: c.GLenum, source: []const u8) !Self {
         const shader = c.glCreateShader(ty);
         errdefer c.glDeleteShader(shader);
@@ -136,6 +143,8 @@ pub const Shader = struct {
 
         if (success != c.GL_TRUE) {
             // TODO
+            // get actual error str
+            // this will need to allocate
             return error.ShaderCompilationError;
         }
 
@@ -206,6 +215,7 @@ pub const Image = struct {
         a: u8,
     };
 
+    allocator: *Allocator,
     data: []Color,
     width: u32,
     height: u32,
@@ -216,8 +226,9 @@ pub const Image = struct {
         height: u32,
     ) !Self {
         const data_len = width * height;
-        const data = allocator.alloc(Color, data_len);
+        const data = try allocator.alloc(Color, data_len);
         return Self{
+            .allocator = allocator,
             .data = data,
             .width = width,
             .height = height,
@@ -243,6 +254,7 @@ pub const Image = struct {
         std.mem.copy(Color, data, @ptrCast([*]Color, raw_data)[0..data_len]);
 
         return Self{
+            .allocator = allocator,
             .data = data,
             .width = @intCast(u32, w),
             .height = @intCast(u32, h),
@@ -261,14 +273,15 @@ pub const Image = struct {
         std.mem.copy(Color, data, @ptrCast([*]Color, raw_data)[0..data_len]);
 
         return Self{
+            .allocator = allocator,
             .data = data,
             .width = @intCast(u32, w),
             .height = @intCast(u32, h),
         };
     }
 
-    pub fn deinit(self: *Self, allocator: *Allocator) void {
-        allocator.free(self.data);
+    pub fn deinit(self: *Self) void {
+        self.allocator.free(self.data);
     }
 };
 
@@ -564,7 +577,7 @@ pub const Location = struct {
     const TextureData = struct {
         select: c.GLenum,
         bind_to: c.GLenum,
-        texture: *Texture,
+        texture: *const Texture,
     };
 
     location: c.GLint,
@@ -589,6 +602,11 @@ pub const Location = struct {
         c.glUniform4fv(self.location, 1, @ptrCast([*]const f32, &val));
     }
 
+    pub fn setColor(self: Self, val: math.Color) void {
+        // TODO use setVec4?
+        c.glUniform4fv(self.location, 1, @ptrCast([*]const f32, &val));
+    }
+
     pub fn setMat3(self: Self, val: math.Mat3) void {
         c.glUniformMatrix3fv(
             self.location,
@@ -605,6 +623,9 @@ pub const Location = struct {
     }
 };
 
+// TODO switch how i do instancing so i can support opengl 3.1?
+//        no, do it later
+//
 pub fn Instancer(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -634,7 +655,7 @@ pub fn Instancer(comptime T: type) type {
     };
 }
 
-// TODO move up into Instancer ^^
+// TODO move up into Instancer ^^ ??
 pub fn BoundInstancer(comptime T: type, comptime M: type) type {
     return struct {
         const Self = @This();

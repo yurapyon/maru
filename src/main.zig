@@ -4,9 +4,11 @@ const nitori = @import("nitori");
 pub const c = @import("c.zig");
 pub const content = @import("content.zig");
 pub const gfx = @import("gfx.zig");
-pub const flat = @import("defaults/flat.zig");
 pub const math = @import("math.zig");
 pub const states = @import("states.zig");
+
+pub const flat = @import("defaults/flat.zig");
+pub const drawer2d = @import("defaults/drawer2d.zig");
 
 //;
 
@@ -14,9 +16,11 @@ test "" {
     _ = c;
     _ = content;
     _ = gfx;
-    _ = flat;
     _ = math;
     _ = states;
+
+    _ = flat;
+    _ = drawer2d;
 }
 
 test "gfx main" {
@@ -36,7 +40,7 @@ test "gfx main" {
     defer prog.deinit();
 
     var img = try gfx.Image.initFromMemory(alloc, content.images.mahou);
-    defer img.deinit(alloc);
+    defer img.deinit();
 
     var tex = gfx.Texture.init(img);
     defer tex.deinit();
@@ -59,8 +63,22 @@ test "gfx main" {
 
     const mat3 = math.Mat3.identity();
 
-    var sprites: [500]flat.Spritebatch.Sprite = undefined;
-    var sb = flat.Spritebatch.init(&sprites);
+    // var sprites: [500]flat.Spritebatch.Sprite = undefined;
+    // var sb = flat.Spritebatch.init(&sprites);
+
+    //;
+
+    var defaults = try drawer2d.DrawDefaults.init(alloc);
+    defer defaults.deinit();
+
+    var drawer = try drawer2d.Drawer2d.init(alloc, .{
+        .coord_stack_size = 20,
+        .spritebatch_size = 500,
+        .circle_resolution = 50,
+    });
+    defer drawer.deinit();
+
+    //;
 
     while (c.glfwWindowShouldClose(ctx.window) == c.GLFW_FALSE) {
         // c.glfwPollEvents();
@@ -82,25 +100,37 @@ test "gfx main" {
 
         c.glClear(c.GL_COLOR_BUFFER_BIT);
 
-        prog.program.bind();
-        prog.locations.base_color.setVec4(math.Vec4(f32).init(1., 1., 1., 1.));
-
-        prog.locations.screen.setMat3(math.Mat3.orthoScreen(math.Vec2(u32).init(800, 600)));
-        prog.locations.view.setMat3(math.Mat3.identity());
-        prog.locations.model.setMat3(math.Mat3.fromTransform2d(math.Transform2d.init(0., 0., 0., 1., 1.)));
-
         {
-            var sp = sb.bind(false);
-            defer sp.deinit();
+            var sprites = drawer.bindSpritebatch(false, .{
+                .program = &defaults.spritebatch_program,
+                .diffuse = &defaults.white_texture,
+                .canvas_width = 800,
+                .canvas_height = 600,
+            });
+            defer sprites.deinit();
 
-            sp.pull().* = flat.Spritebatch.Sprite{
-                .transform = math.Transform2d.init(10., 10., 0., 90., 90.),
-            };
-
-            sp.draw();
+            sprites.rectangle(10., 10., 50., 50.);
         }
 
-        // mesh.draw();
+        //         prog.program.bind();
+        //         prog.locations.base_color.setVec4(math.Vec4(f32).init(1., 1., 1., 1.));
+        //
+        //         prog.locations.screen.setMat3(math.Mat3.orthoScreen(math.Vec2(u32).init(800, 600)));
+        //         prog.locations.view.setMat3(math.Mat3.identity());
+        //         prog.locations.model.setMat3(math.Mat3.fromTransform2d(math.Transform2d.init(0., 0., 0., 1., 1.)));
+        //
+        //         {
+        //             var sp = sb.bind(false);
+        //             defer sp.deinit();
+        //
+        //             sp.pull().* = flat.Spritebatch.Sprite{
+        //                 .transform = math.Transform2d.init(10., 10., 0., 90., 90.),
+        //             };
+        //
+        //             sp.draw();
+        //         }
+        //
+        //         // mesh.draw();
 
         c.glfwSwapBuffers(ctx.window);
     }

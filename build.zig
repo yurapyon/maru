@@ -12,8 +12,9 @@ pub fn build(b: *Builder) void {
 
     main_tests.addLibPath("/usr/lib");
     main_tests.linkSystemLibrary("c");
-    main_tests.linkSystemLibrary("epoxy");
+    main_tests.linkSystemLibrary("glew");
     main_tests.linkSystemLibrary("glfw");
+    main_tests.linkSystemLibrary("epoxy");
 
     main_tests.addPackagePath("nitori", "lib/nitori/src/main.zig");
 

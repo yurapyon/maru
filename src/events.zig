@@ -212,14 +212,14 @@ pub const MouseEvent = union(enum) {
 
     pub const ButtonEvent = struct {
         pub const Button = enum(u8) {
-            Left = 0,
-            Right = 1,
-            Middle = 2,
-            MB_4 = 3,
-            MB_5 = 4,
-            MB_6 = 5,
-            MB_7 = 6,
-            MB_8 = 7,
+            Left,
+            Right,
+            Middle,
+            MB_4,
+            MB_5,
+            MB_6,
+            MB_7,
+            MB_8,
         };
 
         button: Button,

@@ -4,8 +4,11 @@ const Allocator = std.mem.Allocator;
 const c = @import("../c.zig");
 const content = @import("../content.zig");
 const gfx = @import("../gfx.zig");
+
 const math = @import("../math.zig");
 const Vec2 = math.Vec2;
+const Mat3 = math.Mat3;
+const Color = math.Color;
 
 //;
 
@@ -144,6 +147,11 @@ pub const Spritebatch = struct {
         return ret;
     }
 
+    pub fn deinit(self: *Self) void {
+        self.quad_centered.deinit();
+        self.quad.deinit();
+    }
+
     pub fn bind(
         self: *Self,
         centered: bool,
@@ -182,6 +190,16 @@ pub const Locations2d = struct {
             .base_color = program.getLocation("_base_color"),
         };
     }
+
+    // note: doesnt set textures
+    pub fn reset(self: Self) void {
+        self.screen.setMat3(Mat3.identity());
+        self.view.setMat3(Mat3.identity());
+        self.model.setMat3(Mat3.identity());
+        self.time.setFloat(0.);
+        self.flip_uvs.setBool(false);
+        self.base_color.setColor(Color.initRgba(1., 1., 1., 1.));
+    }
 };
 
 pub const Program2d = struct {
@@ -216,6 +234,8 @@ pub const Program2d = struct {
     }
 
     // TODO write a test that tests default program with no effects works
+    // maybe dont take an allocator param here?
+    //   just use a global allocator for 'flat' namespace
     pub fn initDefault(
         v_effect: ?[]const u8,
         f_effect: ?[]const u8,
@@ -254,6 +274,7 @@ pub const Program2d = struct {
         workspace_allocator: *Allocator,
     ) !Self {
         // TODO do this all at comptime
+        //      dont need allocator anymore
         const v_str = try applyEffectToDefaultShader(
             workspace_allocator,
             content.shaders.default_vert,

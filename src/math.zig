@@ -27,15 +27,9 @@ pub fn Vec2(comptime T: type) type {
 
         pub fn zero() Self {
             if (@typeInfo(T) == .Float) {
-                return .{
-                    .x = 0.,
-                    .y = 0.,
-                };
+                return Self.init(0., 0.);
             } else if (@typeInfo(T) == .Int) {
-                return .{
-                    .x = 0,
-                    .y = 0,
-                };
+                return Self.init(0, 0);
             }
         }
 
@@ -59,6 +53,20 @@ pub fn Vec2(comptime T: type) type {
             return .{
                 .x = self.x - other.x,
                 .y = self.y - other.y,
+            };
+        }
+
+        pub fn neg(self: Self) Self {
+            return .{
+                .x = -self.x,
+                .y = -self.y,
+            };
+        }
+
+        pub fn recip(self: Self) Self {
+            return .{
+                .x = 1. / self.x,
+                .y = 1. / self.y,
             };
         }
 
@@ -353,6 +361,14 @@ pub fn AABB(comptime T: type) type {
                 .c1 = Vec2(T).init(x1, y1),
                 .c2 = Vec2(T).init(x2, y2),
             };
+        }
+
+        pub fn identity() Self {
+            if (@typeInfo(T) == .Float) {
+                return Self.init(0., 0., 1., 1.);
+            } else if (@typeInfo(T) == .Int) {
+                return Self.init(0, 0, 1, 1);
+            }
         }
     };
 }

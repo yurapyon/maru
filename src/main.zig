@@ -90,8 +90,8 @@ test "gfx main" {
             defer sprites.unbind();
 
             sprites.rectangle(10., 10., 410., 310.);
-            try sprites.pushCoord(.{ .Shear = math.Vec2(f32).init(1., 0.) });
-            try sprites.pushCoord(.{ .Scale = math.Vec2(f32).init(1., 0.5) });
+            try sprites.pushCoord(.{ .Shear = math.Vec2.init(1., 0.) });
+            try sprites.pushCoord(.{ .Scale = math.Vec2.init(1., 0.5) });
             sprites.rectangle(0., 0., 400., 300.);
             try sprites.popCoord();
             try sprites.popCoord();

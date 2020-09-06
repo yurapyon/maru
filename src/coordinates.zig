@@ -17,10 +17,10 @@ pub const CoordinateStack = struct {
     const Self = @This();
 
     pub const Transform = union(enum) {
-        Translate: Vec2(f32),
+        Translate: Vec2,
         Rotate: f32,
-        Scale: Vec2(f32),
-        Shear: Vec2(f32),
+        Scale: Vec2,
+        Shear: Vec2,
     };
 
     composed: Mat3,

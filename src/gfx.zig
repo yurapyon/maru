@@ -610,7 +610,7 @@ pub const Location = struct {
         c.glUniform1i(self.location, if (val) 1 else 0);
     }
 
-    pub fn setVec4(self: Self, val: math.Vec4(f32)) void {
+    pub fn setVec4(self: Self, val: math.Vec4) void {
         c.glUniform4fv(self.location, 1, @ptrCast([*]const f32, &val));
     }
 

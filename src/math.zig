@@ -7,11 +7,7 @@ fn assertIsNumberType(comptime T: type) void {
     std.debug.assert(type_info == .Float or type_info == .Int);
 }
 
-// TODO do it like nalgebra-glm
-//        where the typed vec2 is TVec2
-//        specialized Vec2 for floats, UVec2 for uint, etc
-//      also have a generic vec2() function that infers the type
-pub fn Vec2(comptime T: type) type {
+pub fn TVec2(comptime T: type) type {
     return extern struct {
         comptime {
             assertIsNumberType(T);
@@ -76,7 +72,7 @@ pub fn Vec2(comptime T: type) type {
 
         //;
 
-        pub fn multMat3(self: Vec2(f32), matr: Mat3) Vec2(f32) {
+        pub fn multMat3(self: Vec2, matr: Mat3) Vec2 {
             return .{
                 .x = self.x * matr.data[0][0] + self.y * matr.data[1][0] + matr.data[2][0],
                 .y = self.x * matr.data[0][1] + self.y * matr.data[1][1] + matr.data[2][1],
@@ -85,14 +81,18 @@ pub fn Vec2(comptime T: type) type {
     };
 }
 
+pub const Vec2 = TVec2(f32);
+pub const UVec2 = TVec2(u32);
+pub const IVec2 = TVec2(i32);
+
 test "Vec2" {
-    const f_zero = Vec2(f32).zero();
-    const d_zero = Vec2(f64).zero();
-    const i_zero = Vec2(u8).zero();
-    const u_zero = Vec2(i8).zero();
+    const f_zero = Vec2.zero();
+    const d_zero = TVec2(f64).zero();
+    const i_zero = TVec2(u8).zero();
+    const u_zero = TVec2(i8).zero();
 }
 
-pub fn Vec3(comptime T: type) type {
+pub fn TVec3(comptime T: type) type {
     return extern struct {
         comptime {
             assertIsNumberType(T);
@@ -150,7 +150,11 @@ pub fn Vec3(comptime T: type) type {
     };
 }
 
-pub fn Vec4(comptime T: type) type {
+pub const Vec3 = TVec3(f32);
+pub const UVec3 = TVec3(u32);
+pub const IVec3 = TVec3(i32);
+
+pub fn TVec4(comptime T: type) type {
     return extern struct {
         comptime {
             assertIsNumberType(T);
@@ -203,8 +207,13 @@ pub fn Vec4(comptime T: type) type {
     };
 }
 
+pub const Vec4 = TVec4(f32);
+pub const UVec4 = TVec4(u32);
+pub const IVec4 = TVec4(i32);
+
 //;
 
+// TODO generic mat3?
 pub const Mat3 = struct {
     const Self = @This();
 
@@ -232,7 +241,7 @@ pub const Mat3 = struct {
         return ret;
     }
 
-    pub fn translation(vec: Vec2(f32)) Self {
+    pub fn translation(vec: Vec2) Self {
         var ret = Self.identity();
         ret.data[2][0] = vec.x;
         ret.data[2][1] = vec.y;
@@ -250,21 +259,21 @@ pub const Mat3 = struct {
         return ret;
     }
 
-    pub fn scaling(vec: Vec2(f32)) Self {
+    pub fn scaling(vec: Vec2) Self {
         var ret = Self.identity();
         ret.data[0][0] = vec.x;
         ret.data[1][1] = vec.y;
         return ret;
     }
 
-    pub fn shearing(vec: Vec2(f32)) Self {
+    pub fn shearing(vec: Vec2) Self {
         var ret = Self.identity();
         ret.data[1][0] = vec.x;
         ret.data[0][1] = vec.y;
         return ret;
     }
 
-    pub fn orthoScreen(dimensions: Vec2(u32)) Self {
+    pub fn orthoScreen(dimensions: UVec2) Self {
         var ret = Self.identity();
         ret.data[0][0] = 2. / @intToFloat(f32, dimensions.x);
         ret.data[1][1] = -2. / @intToFloat(f32, dimensions.y);
@@ -338,13 +347,13 @@ const expect = testing.expect;
 // TODO more tests
 test "Mat3" {
     const iden = Mat3.identity();
-    const trans = Mat3.translation(Vec2(f32).init(10., 15.));
+    const trans = Mat3.translation(Vec2.init(10., 15.));
     expect(trans.isEqualTo(iden.mult(trans)));
     expect(trans.isEqualTo(trans.mult(iden)));
 
-    const v2 = Vec2(f32).init(0., 0.);
+    const v2 = Vec2.init(0., 0.);
     const mul = v2.multMat3(trans);
-    expect(mul.isEqualTo(Vec2(f32).init(10., 15.)));
+    expect(mul.isEqualTo(Vec2.init(10., 15.)));
 }
 
 //;
@@ -357,13 +366,13 @@ pub fn AABB(comptime T: type) type {
 
         const Self = @This();
 
-        c1: Vec2(T),
-        c2: Vec2(T),
+        c1: TVec2(T),
+        c2: TVec2(T),
 
         pub fn init(x1: T, y1: T, x2: T, y2: T) Self {
             return .{
-                .c1 = Vec2(T).init(x1, y1),
-                .c2 = Vec2(T).init(x2, y2),
+                .c1 = TVec2(T).init(x1, y1),
+                .c2 = TVec2(T).init(x2, y2),
             };
         }
 
@@ -386,7 +395,7 @@ pub fn AABB(comptime T: type) type {
         }
 
         // TODO take float type param and let this return AABB(f64)?
-        pub fn normalized(self: Self, vec: Vec2(T)) AABB(f32) {
+        pub fn normalized(self: Self, vec: TVec2(T)) AABB(f32) {
             if (@typeInfo(T) == .Float) {
                 const x = vec.x;
                 const y = vec.y;
@@ -416,7 +425,7 @@ pub fn AABB(comptime T: type) type {
             }
         }
 
-        pub fn displace(self: *Self, offset: Vec2(T)) void {
+        pub fn displace(self: *Self, offset: TVec2(T)) void {
             self.c1.x += offset.x;
             self.c1.y += offset.y;
             self.c2.x += offset.x;
@@ -437,15 +446,15 @@ test "math AABB" {
 pub const Transform2d = extern struct {
     const Self = @This();
 
-    position: Vec2(f32),
+    position: Vec2,
     rotation: f32,
-    scale: Vec2(f32),
+    scale: Vec2,
 
     pub fn init(x: f32, y: f32, r: f32, sx: f32, sy: f32) Self {
         return .{
-            .position = Vec2(f32).init(x, y),
+            .position = Vec2.init(x, y),
             .rotation = r,
-            .scale = Vec2(f32).init(sx, sy),
+            .scale = Vec2.init(sx, sy),
         };
     }
 

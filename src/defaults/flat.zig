@@ -19,10 +19,10 @@ usingnamespace math;
 pub const Vertex2d = extern struct {
     const Self = @This();
 
-    position: Vec2(f32),
-    uv: Vec2(f32),
+    position: Vec2,
+    uv: Vec2,
 
-    pub fn init(position: Vec2(f32), uv: Vec2(f32)) Self {
+    pub fn init(position: Vec2, uv: Vec2) Self {
         return Self{
             .position = position,
             .uv = uv,
@@ -30,10 +30,10 @@ pub const Vertex2d = extern struct {
     }
 
     pub fn genQuad(verts: *[4]Self, centered: bool) void {
-        verts[0] = Self.init(Vec2(f32).init(1., 1.), Vec2(f32).init(1., 1.));
-        verts[1] = Self.init(Vec2(f32).init(1., 0.), Vec2(f32).init(1., 0.));
-        verts[2] = Self.init(Vec2(f32).init(0., 1.), Vec2(f32).init(0., 1.));
-        verts[3] = Self.init(Vec2(f32).init(0., 0.), Vec2(f32).init(0., 0.));
+        verts[0] = Self.init(Vec2.init(1., 1.), Vec2.init(1., 1.));
+        verts[1] = Self.init(Vec2.init(1., 0.), Vec2.init(1., 0.));
+        verts[2] = Self.init(Vec2.init(0., 1.), Vec2.init(0., 1.));
+        verts[3] = Self.init(Vec2.init(0., 0.), Vec2.init(0., 0.));
 
         if (centered) {
             for (verts) |*v| {
@@ -49,8 +49,8 @@ pub const Vertex2d = extern struct {
             const at = @intToFloat(f32, i) * angle_step;
             const x = std.math.cos(at) / 2.;
             const y = std.math.sin(at) / 2.;
-            v.position = Vec2(f32).init(x, y);
-            v.uv = Vec2(f32).init(x + 0.5, y + 0.5);
+            v.position = Vec2.init(x, y);
+            v.uv = Vec2.init(x + 0.5, y + 0.5);
         }
     }
 
@@ -421,7 +421,7 @@ const BoundDrawer2d = struct {
         self.program = prog;
         self.program.program.bind();
         self.program.locations.reset();
-        self.program.locations.screen.setMat3(Mat3.orthoScreen(Vec2(u32).init(
+        self.program.locations.screen.setMat3(Mat3.orthoScreen(UVec2.init(
             self.canvas_width,
             self.canvas_height,
         )));

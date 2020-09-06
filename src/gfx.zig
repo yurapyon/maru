@@ -7,6 +7,8 @@ const events = @import("events.zig");
 const EventHandler = events.EventHandler;
 const math = @import("math.zig");
 
+//;
+
 pub var joystick_ctx_reference: ?*Context = null;
 
 const Error = error{
@@ -57,6 +59,8 @@ pub const Context = struct {
         c.glfwWindowHint(c.GLFW_OPENGL_PROFILE, c.GLFW_OPENGL_CORE_PROFILE);
         c.glfwWindowHint(c.GLFW_RESIZABLE, if (settings.is_resizable) c.GL_TRUE else c.GL_FALSE);
         c.glfwSwapInterval(1);
+
+        // TODO check that we actually have the opengl version requested
 
         const window = c.glfwCreateWindow(
             @intCast(c_int, settings.window_width),
@@ -110,8 +114,6 @@ pub const Context = struct {
         return @ptrCast(*Context, @alignCast(@alignOf(*Context), c.glfwGetJoystickUserPointer(id).?));
     }
 
-    // TODO rename to getEventHandler or something
-    // can acutually just not return anything
     pub fn installEventHandler(self: *Self, allocator: *Allocator) void {
         if (self.event_handler == null) {
             self.event_handler = EventHandler.init(allocator, self.window);
@@ -328,6 +330,10 @@ pub const Texture = struct {
         c.glDeleteTextures(1, &self.texture);
     }
 
+    //;
+
+    // TODO other functions
+
     pub fn setWrap(self: *Self, s: c.GLint, t: c.GLint) void {
         c.glBindTexture(c.GL_TEXTURE_2D, self.texture);
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_S, s);
@@ -374,6 +380,8 @@ fn Buffer(comptime T: type) type {
         pub fn deinit(self: *Self) void {
             c.glDeleteBuffers(1, &self.buffer);
         }
+
+        //;
 
         pub fn bufferNull(self: Self, len: usize) void {
             c.glBindBuffer(c.GL_ARRAY_BUFFER, self.buffer);
@@ -443,6 +451,8 @@ pub const VertexArray = struct {
     pub fn deinit(self: *Self) void {
         c.glDeleteVertexArrays(1, &self.vertex_array);
     }
+
+    //;
 
     pub fn enableAttribute(self: Self, num: c.GLuint, attrib: VertexAttribute) void {
         c.glBindVertexArray(self.vertex_array);
@@ -529,6 +539,8 @@ pub fn Mesh(comptime T: type) type {
             self.vao.deinit();
         }
 
+        //;
+
         pub fn draw(self: Self) void {
             self.vao.bind();
             if (self.indices.len == 0) {
@@ -603,7 +615,6 @@ pub const Location = struct {
     }
 
     pub fn setColor(self: Self, val: math.Color) void {
-        // TODO use setVec4?
         c.glUniform4fv(self.location, 1, @ptrCast([*]const f32, &val));
     }
 
@@ -623,9 +634,6 @@ pub const Location = struct {
     }
 };
 
-// TODO switch how i do instancing so i can support opengl 3.1?
-//        no, do it later
-//
 pub fn Instancer(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -641,6 +649,12 @@ pub fn Instancer(comptime T: type) type {
             };
         }
 
+        pub fn deinit(self: *Self) void {
+            self.ibo.deinit();
+        }
+
+        //;
+
         pub fn makeVertexArrayCompatible(self: Self, vao: VertexArray) void {
             vao.bind();
             self.ibo.bindTo(c.GL_ARRAY_BUFFER);
@@ -648,14 +662,16 @@ pub fn Instancer(comptime T: type) type {
             vao.unbind();
         }
 
-        // caller is responsible for calling deinit on the instancer
         pub fn bind(self: *Self, comptime M: type, mesh: *const Mesh(M)) BoundInstancer(T, M) {
-            return BoundInstancer(T, M).init(self, mesh);
+            return BoundInstancer(T, M){
+                .base = self,
+                .mesh = mesh,
+                .idx = 0,
+            };
         }
     };
 }
 
-// TODO move up into Instancer ^^ ??
 pub fn BoundInstancer(comptime T: type, comptime M: type) type {
     return struct {
         const Self = @This();
@@ -664,15 +680,7 @@ pub fn BoundInstancer(comptime T: type, comptime M: type) type {
         mesh: *const Mesh(M),
         idx: usize,
 
-        fn init(base: *Instancer(T), mesh: *const Mesh(M)) Self {
-            return .{
-                .base = base,
-                .mesh = mesh,
-                .idx = 0,
-            };
-        }
-
-        pub fn deinit(self: *Self) void {
+        pub fn unbind(self: *Self) void {
             if (self.idx != 0) {
                 self.draw();
             }

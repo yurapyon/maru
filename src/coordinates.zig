@@ -8,6 +8,11 @@ const Mat3 = math.Mat3;
 
 //;
 
+pub const Error = error{Underflow};
+
+// TODO take a transform2d and turn it into transforms
+//        maybe add shear to transform 2d? kinda weird
+
 pub const CoordinateStack = struct {
     const Self = @This();
 
@@ -18,16 +23,13 @@ pub const CoordinateStack = struct {
         Shear: Vec2(f32),
     };
 
-    // TODO make it so stack is resizable?
-    //      or have this not own any data
-
     composed: Mat3,
     stack: ArrayList(Transform),
 
-    pub fn initCapacity(allocator: *Allocator, size: usize) !Self {
+    pub fn init(allocator: *Allocator) Self {
         return Self{
             .composed = Mat3.identity(),
-            .stack = try ArrayList(Transform).initCapacity(allocator, size),
+            .stack = ArrayList(Transform).init(allocator),
         };
     }
 
@@ -54,7 +56,10 @@ pub const CoordinateStack = struct {
     }
 
     pub fn pop(self: *Self) !void {
-        const temp = switch (self.stack.pop() orelse return error.Underflow) {
+        if (self.stack.items.len < 1) {
+            return error.Underflow;
+        }
+        const temp = switch (self.stack.pop()) {
             .Translate => |v2| Mat3.translation(v2.neg()),
             .Rotate => |f| Mat3.rotation(-f),
             .Scale => |v2| Mat3.scaling(v2.recip()),

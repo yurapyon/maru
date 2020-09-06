@@ -272,24 +272,24 @@ const Map = struct {
     }
 };
 
-const t = std.testing;
-
-test "" {
-    var alloc = t.allocator;
-
-    var file = try std.fs.cwd().openFile("src/debug.json", .{ .read = true });
-    defer file.close();
-    const sz = try file.getEndPos();
-    var buf = try alloc.alloc(u8, sz);
-    defer alloc.free(buf);
-    const read = file.readAll(buf);
-
-    std.log.warn("{}", .{buf});
-
-    var m = try Map.init(alloc, buf);
-    defer m.deinit(alloc);
-
-    // var stream = json.TokenStream.init(buf);
-    // var m = try json.parse(Map, &stream, .{ .allocator = alloc });
-    // json.parseFree(Map, m, .{ .allocator = alloc });
-}
+// const t = std.testing;
+//
+// test "" {
+//     var alloc = t.allocator;
+//
+//     var file = try std.fs.cwd().openFile("src/debug.json", .{ .read = true });
+//     defer file.close();
+//     const sz = try file.getEndPos();
+//     var buf = try alloc.alloc(u8, sz);
+//     defer alloc.free(buf);
+//     const read = file.readAll(buf);
+//
+//     std.log.warn("{}", .{buf});
+//
+//     var m = try Map.init(alloc, buf);
+//     defer m.deinit(alloc);
+//
+//     // var stream = json.TokenStream.init(buf);
+//     // var m = try json.parse(Map, &stream, .{ .allocator = alloc });
+//     // json.parseFree(Map, m, .{ .allocator = alloc });
+// }

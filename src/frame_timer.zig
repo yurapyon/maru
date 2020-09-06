@@ -1,6 +1,8 @@
 const nitori = @import("nitori");
 const Timer = nitori.timer.Timer;
 
+//;
+
 const FrameTimer = struct {
     const Self = @This();
 

@@ -7,6 +7,10 @@ fn assertIsNumberType(comptime T: type) void {
     std.debug.assert(type_info == .Float or type_info == .Int);
 }
 
+// TODO do it like nalgebra-glm
+//        where the typed vec2 is TVec2
+//        specialized Vec2 for floats, UVec2 for uint, etc
+//      also have a generic vec2() function that infers the type
 pub fn Vec2(comptime T: type) type {
     return extern struct {
         comptime {
@@ -370,11 +374,63 @@ pub fn AABB(comptime T: type) type {
                 return Self.init(0, 0, 1, 1);
             }
         }
+
+        //;
+
+        pub fn width(self: Self) T {
+            return self.c2.x - self.c1.x;
+        }
+
+        pub fn height(self: Self) T {
+            return self.c2.y - self.c1.y;
+        }
+
+        // TODO take float type param and let this return AABB(f64)?
+        pub fn normalized(self: Self, vec: Vec2(T)) AABB(f32) {
+            if (@typeInfo(T) == .Float) {
+                const x = vec.x;
+                const y = vec.y;
+                const x1 = self.c1.x / x;
+                const y1 = self.c1.y / y;
+                const x2 = self.c2.x / x;
+                const y2 = self.c2.y / y;
+                return AABB.init(x1, y1, x2, y2);
+            } else if (@typeInfo(T) == .Int) {
+                const x = @intToFloat(f32, vec.x);
+                const y = @intToFloat(f32, vec.y);
+                const x1 = @intToFloat(f32, self.c1.x) / x;
+                const y1 = @intToFloat(f32, self.c1.y) / y;
+                const x2 = @intToFloat(f32, self.c2.x) / x;
+                const y2 = @intToFloat(f32, self.c2.y) / y;
+                return AABB.init(x1, y1, x2, y2);
+            }
+        }
+
+        pub fn reorient(self: *Self) void {
+            if (self.c1.x > self.c2.x) {
+                std.mem.swap(&self.c1.x, &self.c2.x);
+            }
+
+            if (self.c1.y > self.c2.y) {
+                std.mem.swap(&self.c1.y, &self.c2.y);
+            }
+        }
+
+        pub fn displace(self: *Self, offset: Vec2(T)) void {
+            self.c1.x += offset.x;
+            self.c1.y += offset.y;
+            self.c2.x += offset.x;
+            self.c2.y += offset.y;
+        }
     };
 }
 
 pub const TextureRegion = AABB(i32);
 pub const UV_Region = AABB(f32);
+
+test "math AABB" {
+    // TODO
+}
 
 //;
 

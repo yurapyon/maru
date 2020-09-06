@@ -1,42 +1,46 @@
 const std = @import("std");
-const nitori = @import("nitori");
 
 pub const c = @import("c.zig");
 pub const content = @import("content.zig");
+pub const coordinates = @import("coordinates.zig");
+pub const events = @import("events.zig");
+pub const frame_timer = @import("frame_timer.zig");
 pub const gfx = @import("gfx.zig");
 pub const math = @import("math.zig");
 pub const states = @import("states.zig");
-pub const events = @import("events.zig");
-pub const coords = @import("coordinates.zig");
+pub const tiled = @import("tiled.zig");
 
 pub const flat = @import("defaults/flat.zig");
-pub const drawer2d = @import("defaults/drawer2d.zig");
 
 //;
 
 test "" {
     _ = c;
     _ = content;
+    _ = coordinates;
+    _ = events;
+    _ = frame_timer;
     _ = gfx;
     _ = math;
     _ = states;
+    _ = tiled;
 
     _ = flat;
-    _ = drawer2d;
 }
 
 test "gfx main" {
     const alloc = std.testing.allocator;
 
-    var ctx = try gfx.Context.init(.{
+    var ctx: gfx.Context = undefined;
+    try ctx.init(.{
         .window_width = 800,
         .window_height = 600,
     });
     defer ctx.deinit();
 
-    ctx.updateGLFW_WindowUserPtr();
+    ctx.installEventHandler(alloc);
 
-    var evs = ctx.installEventHandler(alloc);
+    const evs = &ctx.event_handler.?;
 
     var img = try gfx.Image.initFromMemory(alloc, content.images.mahou);
     defer img.deinit();
@@ -46,11 +50,10 @@ test "gfx main" {
 
     //;
 
-    var defaults = try drawer2d.DrawDefaults.init(alloc);
+    var defaults = try flat.DrawDefaults.init(alloc);
     defer defaults.deinit();
 
-    var drawer = try drawer2d.Drawer2d.init(alloc, .{
-        .coord_stack_size = 20,
+    var drawer = try flat.Drawer2d.init(alloc, .{
         .spritebatch_size = 500,
         .circle_resolution = 50,
     });
@@ -84,9 +87,14 @@ test "gfx main" {
                 .canvas_width = 800,
                 .canvas_height = 600,
             });
-            defer sprites.deinit();
+            defer sprites.unbind();
 
+            sprites.rectangle(10., 10., 410., 310.);
+            try sprites.pushCoord(.{ .Shear = math.Vec2(f32).init(1., 0.) });
+            try sprites.pushCoord(.{ .Scale = math.Vec2(f32).init(1., 0.5) });
             sprites.rectangle(0., 0., 400., 300.);
+            try sprites.popCoord();
+            try sprites.popCoord();
         }
 
         c.glfwSwapBuffers(ctx.window);

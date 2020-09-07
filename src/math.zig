@@ -394,7 +394,8 @@ pub fn AABB(comptime T: type) type {
             return self.c2.y - self.c1.y;
         }
 
-        // TODO take float type param and let this return AABB(f64)?
+        // TODO could take float type param and let this return AABB(f64)
+        //        not rly necessary for games
         pub fn normalized(self: Self, vec: TVec2(T)) AABB(f32) {
             if (@typeInfo(T) == .Float) {
                 const x = vec.x;

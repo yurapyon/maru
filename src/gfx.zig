@@ -60,7 +60,7 @@ pub const Context = struct {
         c.glfwWindowHint(c.GLFW_RESIZABLE, if (settings.is_resizable) c.GL_TRUE else c.GL_FALSE);
         c.glfwSwapInterval(1);
 
-        // TODO check that we actually have the opengl version requested
+        // note: window creation fails if we can't get the desired opengl version
 
         const window = c.glfwCreateWindow(
             @intCast(c_int, settings.window_width),
@@ -128,12 +128,13 @@ pub const Shader = struct {
 
     shader: c.GLuint,
 
+    // TODO to handle errors here probably just use a Result
     // TODO by taking a slice of strings rather than a single string,
     //   flat namespace wont need an allocator for default shader
     //   problem is you gotta turn that slice of slices into a slice of ptrs
     //   or take a slice of ptrs which isnt as nice.
     //   sentineled ptrs?
-    pub fn init(ty: c.GLenum, source: []const u8) !Self {
+    pub fn init(ty: c.GLenum, source: [:0]const u8) !Self {
         const shader = c.glCreateShader(ty);
         errdefer c.glDeleteShader(shader);
 
@@ -145,8 +146,19 @@ pub const Shader = struct {
 
         if (success != c.GL_TRUE) {
             // TODO
-            // get actual error str
-            // this will need to allocate
+            var len: c_int = 0;
+            c.glGetShaderiv(
+                shader,
+                c.GL_INFO_LOG_LENGTH,
+                &len,
+            );
+            var buf = try std.testing.allocator.alloc(u8, @intCast(usize, len) + 1);
+            defer std.testing.allocator.free(buf);
+
+            c.glGetShaderInfoLog(shader, len, null, buf.ptr);
+
+            std.log.info("{}\n", .{buf});
+
             return error.ShaderCompilationError;
         }
 
@@ -158,6 +170,8 @@ pub const Shader = struct {
     pub fn deinit(self: *Self) void {
         c.glDeleteShader(self.shader);
     }
+
+    //;
 };
 
 pub const Program = struct {
@@ -294,7 +308,7 @@ pub const Texture = struct {
     width: u32,
     height: u32,
 
-    pub fn init(image: Image) Self {
+    pub fn init(width: u32, height: u32) Self {
         var tex: c.GLuint = undefined;
         c.glGenTextures(1, &tex);
         c.glBindTexture(c.GL_TEXTURE_2D, tex);
@@ -307,7 +321,33 @@ pub const Texture = struct {
             @intCast(c.GLint, image.height),
             0,
             c.GL_RGBA,
-            c.GL_UNSIGNED_INT_8_8_8_8_REV,
+            c.GL_UNSIGNED_BYTE,
+            null,
+        );
+
+        c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
+        return .{
+            .texture = tex,
+            .width = image.width,
+            .height = image.height,
+        };
+    }
+
+    pub fn initImage(image: Image) Self {
+        var tex: c.GLuint = undefined;
+        c.glGenTextures(1, &tex);
+        c.glBindTexture(c.GL_TEXTURE_2D, tex);
+
+        c.glTexImage2D(
+            c.GL_TEXTURE_2D,
+            0,
+            c.GL_RGBA,
+            @intCast(c.GLint, image.width),
+            @intCast(c.GLint, image.height),
+            0,
+            c.GL_RGBA,
+            c.GL_UNSIGNED_BYTE,
             image.data.ptr,
         );
 
@@ -332,8 +372,6 @@ pub const Texture = struct {
 
     //;
 
-    // TODO other functions
-
     pub fn setWrap(self: *Self, s: c.GLint, t: c.GLint) void {
         c.glBindTexture(c.GL_TEXTURE_2D, self.texture);
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_S, s);
@@ -345,6 +383,19 @@ pub const Texture = struct {
         c.glBindTexture(c.GL_TEXTURE_2D, self.texture);
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, min);
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, mag);
+        c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    }
+
+    pub fn setBorderColor(
+        self: *Self,
+        r: c.GLfloat,
+        g: c.GLfloat,
+        b: c.GLfloat,
+        a: c.GLfloat,
+    ) void {
+        const tmp = [_]c.GLfloat{ r, g, b, a };
+        c.glBindTexture(c.GL_TEXTURE_2D, self.texture);
+        c.glTexParameterfv(c.GL_TEXTURE_2D, c.GL_TEXTURE_BORDER_COLOR, &tmp);
         c.glBindTexture(c.GL_TEXTURE_2D, 0);
     }
 };
@@ -482,18 +533,86 @@ pub const VertexArray = struct {
     }
 };
 
-// TODO
+// TODO test works
 pub const Canvas = struct {
     const Self = @This();
 
-    pub fn init(width: u32, height: u32) Self {}
+    texture: Texture,
+    rbo: c.GLuint,
+    fbo: c.GLuint,
 
-    pub fn deinit(self: *Self) void {}
+    pub fn init(width: u32, height: u32) Self {
+        const texture = Texture.init(width, height);
+
+        var rbo = undefined;
+        c.glGenRenderbuffers(1, &rbo);
+        c.glBindRenderbuffer(c.GL_RENDERBUFFER, rbo);
+
+        c.glRenderbufferStorage(
+            c.GL_RENDERBUFFER,
+            c.GL_DEPTH24_STENCIL8,
+            @intCast(c.GLsizei, width),
+            @intCast(c.GLsizei, height),
+        );
+        c.glBindRenderbuffer(c.GL_RENDERBUFFER, 0);
+
+        var fbo = undefined;
+        c.glGenFramebuffers(1, &fbo);
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, fbo);
+        c.glFramebufferTexture2D(
+            c.GL_FRAMEBUFFER,
+            c.GL_COLOR_ATTACHMENT0,
+            c.GL_TEXTURE_2D,
+            texture.texture,
+            0,
+        );
+        c.glFramebufferRenderbuffer(
+            c.GL_FRAMEBUFFER,
+            c.GL_DEPTH_STENCIL_ATTACHMENT,
+            c.GL_RENDERBUFFER,
+            rbo,
+        );
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+
+        return .{
+            .texture = texture,
+            .rbo = rbo,
+            .fbo = fbo,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        c.DeleteFramebuffers(1, &self.fbo);
+        c.DeleteRenderbuffers(1, &self.rbo);
+        self.texture.deinit();
+    }
+
+    //;
+
+    pub fn bind(self: Self) void {
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.fbo);
+    }
+
+    pub fn unbind(self: Self) void {
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+    }
+
+    pub fn setGL_Viewport(self: Self) void {
+        c.glViewport(
+            0,
+            0,
+            @intCast(c.GLsizei, self.texture.width),
+            @intCast(c.GLsizei, self.texture.height),
+        );
+    }
 };
 
 // TODO
-// for now doesnt own data
-// is that right
+//   make this so this owns its own data as an arraylist ?
+//   or set it up like how the buff is, where its just some
+//     glbuffers in gpumemory the user can do things with
+//   initNull, initFromSlice,
+//   subData/bufferData can be called on the buffers here directly
 pub fn Mesh(comptime T: type) type {
     return struct {
         const Self = @This();

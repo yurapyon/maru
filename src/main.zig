@@ -45,7 +45,7 @@ test "gfx main" {
     var img = try gfx.Image.initFromMemory(alloc, content.images.mahou);
     defer img.deinit();
 
-    var tex = gfx.Texture.init(img);
+    var tex = gfx.Texture.initImage(img);
     defer tex.deinit();
 
     //;

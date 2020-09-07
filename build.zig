@@ -17,6 +17,7 @@ pub fn build(b: *Builder) void {
     main_tests.linkSystemLibrary("epoxy");
 
     main_tests.addPackagePath("nitori", "lib/nitori/src/main.zig");
+    main_tests.addPackagePath("json", "lib/json/json.zig");
 
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&main_tests.step);

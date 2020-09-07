@@ -226,12 +226,12 @@ pub const Program2d = struct {
         comptime default_shader: []const u8,
         comptime default_effect: []const u8,
         maybe_effect: ?[]const u8,
-    ) ![]u8 {
+    ) ![:0]u8 {
         const ins = std.mem.indexOfScalar(u8, default_shader, '@') orelse unreachable;
         const header = default_shader[0..ins];
         const footer = default_shader[(ins + 1)..];
         const effect = maybe_effect orelse default_effect;
-        return std.mem.concat(allocator, u8, &[_][]const u8{ header, effect, footer });
+        return std.mem.joinZ(allocator, "", &[_][]const u8{ header, effect, footer });
     }
 
     // TODO write a test that tests default program with no effects works
@@ -330,7 +330,7 @@ pub const DrawDefaults = struct {
             .spritebatch_program = try Program2d.initDefaultSpritebatch(
                 workspace_allocator,
             ),
-            .white_texture = Texture.init(img),
+            .white_texture = Texture.initImage(img),
         };
     }
 

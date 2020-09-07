@@ -1,1 +1,9 @@
 change instancer to support ogl 3.1
+
+fonts
+particle system
+
+random shader compile error??
+  on compiling default vertex shader
+  seems like a memory thing, only happened once
+  happens on the first time of recompilation but it doesnt happen again?

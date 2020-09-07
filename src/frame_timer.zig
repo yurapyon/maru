@@ -3,7 +3,7 @@ const Timer = nitori.timer.Timer;
 
 //;
 
-const FrameTimer = struct {
+pub const FrameTimer = struct {
     const Self = @This();
 
     tm: Timer,
@@ -11,7 +11,7 @@ const FrameTimer = struct {
     last_delta: f64,
 
     pub fn start() Self {
-        const tm = Timer.start();
+        var tm = Timer.start();
         return .{
             .tm = tm,
             .last = tm.now(),
@@ -20,11 +20,13 @@ const FrameTimer = struct {
     }
 
     pub fn step(self: *Self) f64 {
-        const now = self.tm.now();
-        self.last_delta = now - self.last;
-        self.last = now;
+        const tm_now = self.tm.now();
+        self.last_delta = @intToFloat(f64, tm_now - self.last) * 1000.;
+        self.last = tm_now;
         return self.last_delta;
     }
 
-    // TODO sleep
+    pub fn now(self: Self) u64 {
+        return self.tm.now();
+    }
 };

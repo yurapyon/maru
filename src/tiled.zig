@@ -2,7 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 
-const json = std.json;
+const json = @import("json");
 
 // fn parseHexFormatColorRgb(str: []const u8) ![3]u8 {
 //     const r = try std.fmt.parseInt(u8, str[0..2], 16);
@@ -19,12 +19,14 @@ const json = std.json;
 //     return [_]u8{ r, g, b, a };
 // }
 
-const Data = union(enum) {
+// TODO probably change the inplementation and just do it the 'normal way'
+
+pub const Data = union(enum) {
     gids: []u64,
     base64_data: []u8,
 };
 
-const Chunk = struct {
+pub const Chunk = struct {
     data: Data,
     x: i64,
     y: i64,
@@ -32,24 +34,24 @@ const Chunk = struct {
     height: i64,
 };
 
-const PropertyValue = union(enum) {
+pub const PropertyValue = union(enum) {
     string: []u8,
     integer: i64,
     float: f64,
     boolean: bool,
 };
 
-const Property = struct {
+pub const Property = struct {
     name: []u8,
     @"type": []u8,
     value: PropertyValue,
 };
 
-const TileLayer = struct {
+pub const TileLayer = struct {
     chunks: ?[]Chunk = null,
-    compression: []u8,
+    compression: ?[]u8 = null,
     data: Data,
-    encoding: []u8,
+    encoding: ?[]u8 = null,
     id: i64,
     name: []u8,
     offsetx: ?f64 = null,
@@ -67,12 +69,12 @@ const TileLayer = struct {
     height: ?i64 = null,
 };
 
-const Point = struct {
+pub const Point = struct {
     x: f64,
     y: f64,
 };
 
-const Text = struct {
+pub const Text = struct {
     bold: ?bool = null,
     color: ?[]u8 = null,
     fontfamily: ?[]u8 = null,
@@ -87,7 +89,7 @@ const Text = struct {
     wrap: ?bool = null,
 };
 
-const Object = struct {
+pub const Object = struct {
     ellipse: ?bool = null,
     height: f64,
     gid: ?i64 = null,
@@ -107,7 +109,7 @@ const Object = struct {
     y: f64,
 };
 
-const ObjectGroup = struct {
+pub const ObjectGroup = struct {
     draworder: []u8,
     id: i64,
     name: []u8,
@@ -127,7 +129,7 @@ const ObjectGroup = struct {
     height: ?i64 = null,
 };
 
-const ImageLayer = struct {
+pub const ImageLayer = struct {
     id: i64,
     image: []u8,
     name: []u8,
@@ -147,11 +149,9 @@ const ImageLayer = struct {
     height: ?i64 = null,
 };
 
-// TODO
-// maube just have to specify error for json.parse
-const Group = struct {
+pub const Group = struct {
     id: i64,
-    // layers: []Layer,
+    layers: []Layer,
     name: []u8,
     offsetx: f64,
     offsety: f64,
@@ -168,19 +168,19 @@ const Group = struct {
     height: i64,
 };
 
-const Layer = union(enum) {
-    tile_layer: TileLayer,
-    object_group: ObjectGroup,
-    image_layer: ImageLayer,
-    // group: Group,
+pub const Layer = union(enum) {
+    TileLayer: TileLayer,
+    ObjectGroup: ObjectGroup,
+    ImageLayer: ImageLayer,
+    Group: Group,
 };
 
-const Frame = struct {
+pub const Frame = struct {
     tileid: i64,
     duration: i64,
 };
 
-const Tile = struct {
+pub const Tile = struct {
     id: i64,
     image: []u8,
     imagewidth: i64,
@@ -192,24 +192,24 @@ const Tile = struct {
     probability: ?f64 = null,
 };
 
-const Grid = struct {
+pub const Grid = struct {
     height: i64,
     orientation: ?[]u8 = null,
     width: i64,
 };
 
-const TileOffset = struct {
+pub const TileOffset = struct {
     x: i64,
     y: i64,
 };
 
-const Terrain = struct {
+pub const Terrain = struct {
     name: []u8,
     properties: ?[]Property = null,
     tile: i64,
 };
 
-const Tileset = struct {
+pub const Tileset = struct {
     backgroundcolor: ?[]u8 = null,
     columns: i64,
     firstgid: i64,
@@ -219,25 +219,25 @@ const Tileset = struct {
     imageheight: i64,
     margin: i64,
     name: []u8,
-    objectalignment: []u8,
+    objectalignment: ?[]u8 = null,
     properties: ?[]Property = null,
-    source: []u8,
+    source: ?[]u8 = null,
     spacing: i64,
     terrains: ?[]Terrain = null,
     tilecount: i64,
-    tiledversion: []u8,
+    tiledversion: ?[]u8 = null,
     tileheight: i64,
     tileoffset: ?TileOffset = null,
     tiles: ?[]Tile = null,
     tilewidth: i64,
     transparentcolor: ?[]u8 = null,
-    @"type": []u8,
-    version: f64,
+    @"type": ?[]u8 = null,
+    version: ?f64 = null,
     // TODO
     // wangsets
 };
 
-const Map = struct {
+pub const Map = struct {
     const Self = @This();
 
     backgroundcolor: ?[]u8 = null,
@@ -261,35 +261,30 @@ const Map = struct {
     version: f64,
     width: i64,
 
-    fn init(allocator: *Allocator, json_str: []const u8) !Self {
+    pub fn init(allocator: *Allocator, json_str: []const u8) !Self {
         @setEvalBranchQuota(7000);
         var stream = json.TokenStream.init(json_str);
         return json.parse(Map, &stream, .{ .allocator = allocator });
     }
 
-    fn deinit(self: *Self, allocator: *Allocator) void {
+    pub fn deinit(self: *Self, allocator: *Allocator) void {
         json.parseFree(Self, self.*, .{ .allocator = allocator });
     }
 };
 
-// const t = std.testing;
-//
-// test "" {
-//     var alloc = t.allocator;
-//
-//     var file = try std.fs.cwd().openFile("src/debug.json", .{ .read = true });
-//     defer file.close();
-//     const sz = try file.getEndPos();
-//     var buf = try alloc.alloc(u8, sz);
-//     defer alloc.free(buf);
-//     const read = file.readAll(buf);
-//
-//     std.log.warn("{}", .{buf});
-//
-//     var m = try Map.init(alloc, buf);
-//     defer m.deinit(alloc);
-//
-//     // var stream = json.TokenStream.init(buf);
-//     // var m = try json.parse(Map, &stream, .{ .allocator = alloc });
-//     // json.parseFree(Map, m, .{ .allocator = alloc });
-// }
+test "tiled" {
+    var alloc = std.testing.allocator;
+
+    // TODO read file differently
+    var file = try std.fs.cwd().openFile("tests/debug.json", .{ .read = true });
+    defer file.close();
+    const sz = try file.getEndPos();
+    var buf = try alloc.alloc(u8, sz);
+    defer alloc.free(buf);
+    const read = file.readAll(buf);
+
+    std.log.warn("{}", .{buf});
+
+    var m = try Map.init(alloc, buf);
+    defer m.deinit(alloc);
+}

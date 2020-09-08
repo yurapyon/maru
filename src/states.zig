@@ -44,7 +44,7 @@ pub fn StateMachine(comptime T: type) type {
 
             pub fn init(state: anytype) State {
                 return .{
-                    .vtable = comptime vtable.populate(VTable, @TypeOf(state).Child),
+                    .vtable = comptime vtable.populate(VTable, @typeInfo(@TypeOf(state)).Pointer.child),
                     .impl = @ptrCast(*VTable.Impl, state),
                 };
             }

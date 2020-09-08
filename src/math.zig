@@ -404,7 +404,7 @@ pub fn AABB(comptime T: type) type {
                 const y1 = self.c1.y / y;
                 const x2 = self.c2.x / x;
                 const y2 = self.c2.y / y;
-                return AABB.init(x1, y1, x2, y2);
+                return AABB(f32).init(x1, y1, x2, y2);
             } else if (@typeInfo(T) == .Int) {
                 const x = @intToFloat(f32, vec.x);
                 const y = @intToFloat(f32, vec.y);
@@ -412,7 +412,7 @@ pub fn AABB(comptime T: type) type {
                 const y1 = @intToFloat(f32, self.c1.y) / y;
                 const x2 = @intToFloat(f32, self.c2.x) / x;
                 const y2 = @intToFloat(f32, self.c2.y) / y;
-                return AABB.init(x1, y1, x2, y2);
+                return AABB(f32).init(x1, y1, x2, y2);
             }
         }
 

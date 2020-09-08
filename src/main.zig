@@ -83,18 +83,22 @@ test "gfx main" {
         {
             var sprites = drawer.bindSpritebatch(false, .{
                 .program = &defaults.spritebatch_program,
-                .diffuse = &tex,
+                .diffuse = &defaults.white_texture,
                 .canvas_width = 800,
                 .canvas_height = 600,
             });
             defer sprites.unbind();
+            sprites.rectangle(0., 0., 800., 600.);
 
-            sprites.rectangle(10., 10., 410., 310.);
-            try sprites.pushCoord(.{ .Shear = math.Vec2.init(1., 0.) });
-            try sprites.pushCoord(.{ .Scale = math.Vec2.init(1., 0.5) });
-            sprites.rectangle(0., 0., 400., 300.);
-            try sprites.popCoord();
-            try sprites.popCoord();
+            //             sprites.rectangle(10., 10., 410., 310.);
+            //             try sprites.pushCoord(.{ .Shear = math.Vec2.init(1., 0.) });
+            //             try sprites.pushCoord(.{ .Scale = math.Vec2.init(1., 0.5) });
+            //             sprites.rectangle(0., 0., 400., 300.);
+            //             try sprites.popCoord();
+            //             try sprites.popCoord();
+
+            sprites.sprite_color = math.Color.initRgba(0., 0., 0., 1.);
+            sprites.print(defaults.ibm_font, "hello world \x01\x02\x03");
         }
 
         c.glfwSwapBuffers(ctx.window);

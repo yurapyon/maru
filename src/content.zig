@@ -1,5 +1,6 @@
 pub const images = struct {
     pub const mahou = @embedFile("../content/mahou.jpg");
+    pub const codepage437 = @embedFile("../content/Codepage437.png");
 };
 
 pub const shaders = struct {

@@ -311,16 +311,24 @@ pub const DrawDefaults = struct {
     program: Program2d,
     spritebatch_program: Program2d,
     white_texture: Texture,
+    ibm_font: FixedFont,
 
     pub fn init(workspace_allocator: *Allocator) !Self {
-        var img = try Image.init(workspace_allocator, 1, 1);
-        img.data[0] = .{
+        var white = try Image.init(workspace_allocator, 1, 1);
+        white.data[0] = .{
             .r = 255,
             .g = 255,
             .b = 255,
             .a = 255,
         };
-        defer img.deinit();
+        defer white.deinit();
+
+        var codepage437 = try gfx.Image.initFromMemory(
+            workspace_allocator,
+            content.images.codepage437,
+        );
+        defer codepage437.deinit();
+
         return DrawDefaults{
             .program = try Program2d.initDefault(
                 null,
@@ -330,7 +338,8 @@ pub const DrawDefaults = struct {
             .spritebatch_program = try Program2d.initDefaultSpritebatch(
                 workspace_allocator,
             ),
-            .white_texture = Texture.initImage(img),
+            .white_texture = Texture.initImage(white),
+            .ibm_font = FixedFont.init(codepage437, 9, 16),
         };
     }
 
@@ -508,9 +517,29 @@ pub const BoundSpritebatch = struct {
 
     pub fn sprite(self: *Self, transform: Transform2d, uv: UV_Region, color: Color) void {
         var sp = self.sprites.pull();
-        sp.transform = transfrom;
+        sp.transform = transform;
         sp.uv = uv;
         sp.color = color;
+    }
+
+    pub fn print(self: *Self, font: FixedFont, text: []const u8) void {
+        self.setDiffuse(&font.texture);
+        const fw = @intToFloat(f32, font.glyph_width);
+        const fh = @intToFloat(f32, font.glyph_height);
+        var x_at: f32 = 0.;
+        var y_at: f32 = 0.;
+        for (text) |ch| {
+            var sp = self.sprites.pull();
+            sp.transform.position.x = x_at;
+            sp.transform.position.y = y_at;
+            sp.transform.rotation = 0.;
+            sp.transform.scale.x = fw;
+            sp.transform.scale.y = fh;
+            sp.uv = font.uvRegion(ch);
+            sp.color = self.sprite_color;
+
+            x_at += fw;
+        }
     }
 };
 
@@ -538,4 +567,54 @@ pub const BoundShapeDrawer = struct {
     }
 
     //;
+};
+
+// fonts ===
+
+// Codepage 437 font
+pub const FixedFont = struct {
+    const Self = @This();
+
+    texture: Texture,
+    glyph_width: u32,
+    glyph_height: u32,
+    width_ct: u32,
+    height_ct: u32,
+
+    pub fn init(image: Image, glyph_width: u32, glyph_height: u32) Self {
+        return .{
+            .texture = Texture.initImage(image),
+            .glyph_width = glyph_width,
+            .glyph_height = glyph_height,
+            .width_ct = image.width / glyph_width,
+            .height_ct = image.height / glyph_height,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.texture.deinit();
+    }
+
+    //;
+
+    pub fn region(self: Self, glyph: u8) TextureRegion {
+        // glyph is a number betw 0 and 255
+        // wrap it around width_ct
+        const x = glyph % self.width_ct;
+        const y = glyph / self.width_ct;
+        return TextureRegion.init(
+            @intCast(i32, x * self.glyph_width),
+            @intCast(i32, y * self.glyph_height),
+            @intCast(i32, (x + 1) * self.glyph_width),
+            @intCast(i32, (y + 1) * self.glyph_height),
+        );
+    }
+
+    pub fn uvRegion(self: Self, glyph: u8) UV_Region {
+        const tx = self.region(glyph);
+        return tx.normalized(IVec2.init(
+            @intCast(i32, self.texture.width),
+            @intCast(i32, self.texture.height),
+        ));
+    }
 };

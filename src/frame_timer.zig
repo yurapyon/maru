@@ -21,7 +21,7 @@ pub const FrameTimer = struct {
 
     pub fn step(self: *Self) f64 {
         const tm_now = self.tm.now();
-        self.last_delta = @intToFloat(f64, tm_now - self.last) * 1000.;
+        self.last_delta = @intToFloat(f64, tm_now - self.last) / 1000000000.;
         self.last = tm_now;
         return self.last_delta;
     }

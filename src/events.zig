@@ -199,6 +199,12 @@ pub const CharEvent = struct {
         ret.len = std.unicode.utf8Encode(@intCast(u21, raw_codepoint), &ret.buf) catch 0;
         return ret;
     }
+
+    pub fn slice(self: Self) []const u8 {
+        var ret: []const u8 = &self.buf;
+        ret.len = self.len;
+        return ret;
+    }
 };
 
 pub const MouseEvent = union(enum) {

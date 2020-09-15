@@ -26,7 +26,7 @@ pub const FrameTimer = struct {
         return self.last_delta;
     }
 
-    pub fn now(self: Self) u64 {
+    pub fn now(self: *Self) u64 {
         return self.tm.now();
     }
 };

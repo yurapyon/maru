@@ -16,6 +16,10 @@ usingnamespace math;
 
 //;
 
+// TODO
+//   assert spritebatch isnt bound twice from drawer2d
+//   floor_positions boolean uniform in default shader?
+
 pub const Vertex2d = extern struct {
     const Self = @This();
 
@@ -238,9 +242,9 @@ pub const Program2d = struct {
     // maybe dont take an allocator param here?
     //   just use a global allocator for 'flat' namespace
     pub fn initDefault(
+        workspace_allocator: *Allocator,
         v_effect: ?[]const u8,
         f_effect: ?[]const u8,
-        workspace_allocator: *Allocator,
     ) !Self {
         const v_str = try applyEffectToDefaultShader(
             workspace_allocator,
@@ -268,38 +272,16 @@ pub const Program2d = struct {
         return Self.init(prog);
     }
 
-    // make is so only way this could fail is if gfx not inited
-    //  other things i dont check for that
-    //   so maybe just make it so it cant fail
     pub fn initDefaultSpritebatch(
         workspace_allocator: *Allocator,
+        v_effect: ?[]const u8,
+        f_effect: ?[]const u8,
     ) !Self {
-        // TODO do this all at comptime
-        //      dont need allocator anymore
-        const v_str = try applyEffectToDefaultShader(
+        return Self.initDefault(
             workspace_allocator,
-            content.shaders.default_vert,
-            content.shaders.default_spritebatch_vert,
-            null,
+            v_effect orelse content.shaders.default_spritebatch_vert,
+            f_effect orelse content.shaders.default_spritebatch_frag,
         );
-        defer workspace_allocator.free(v_str);
-
-        const f_str = try applyEffectToDefaultShader(
-            workspace_allocator,
-            content.shaders.default_frag,
-            content.shaders.default_spritebatch_frag,
-            null,
-        );
-        defer workspace_allocator.free(f_str);
-
-        var v_shader = try gfx.Shader.init(c.GL_VERTEX_SHADER, v_str);
-        defer v_shader.deinit();
-        var f_shader = try gfx.Shader.init(c.GL_FRAGMENT_SHADER, f_str);
-        defer f_shader.deinit();
-
-        const prog = try gfx.Program.init(&[_]gfx.Shader{ v_shader, f_shader });
-
-        return Self.init(prog);
     }
 };
 
@@ -311,6 +293,7 @@ pub const DrawDefaults = struct {
     program: Program2d,
     spritebatch_program: Program2d,
     white_texture: Texture,
+    mahou_texture: Texture,
     ibm_font: FixedFont,
 
     pub fn init(workspace_allocator: *Allocator) !Self {
@@ -323,6 +306,9 @@ pub const DrawDefaults = struct {
         };
         defer white.deinit();
 
+        var mahou = try Image.initFromMemory(workspace_allocator, content.images.mahou);
+        defer mahou.deinit();
+
         var codepage437 = try gfx.Image.initFromMemory(
             workspace_allocator,
             content.images.codepage437,
@@ -331,14 +317,17 @@ pub const DrawDefaults = struct {
 
         return DrawDefaults{
             .program = try Program2d.initDefault(
-                null,
-                null,
                 workspace_allocator,
+                null,
+                null,
             ),
             .spritebatch_program = try Program2d.initDefaultSpritebatch(
                 workspace_allocator,
+                null,
+                null,
             ),
             .white_texture = Texture.initImage(white),
+            .mahou_texture = Texture.initImage(mahou),
             .ibm_font = FixedFont.init(codepage437, 9, 16),
         };
     }
@@ -358,6 +347,7 @@ pub const Drawer2d = struct {
         circle_resolution: usize,
     };
 
+    // TODO make a separate bindingcontext for spritebatch and shapedrawer
     const BindingContext = struct {
         program: *const Program2d,
         diffuse: *const Texture,
@@ -582,8 +572,10 @@ pub const FixedFont = struct {
     height_ct: u32,
 
     pub fn init(image: Image, glyph_width: u32, glyph_height: u32) Self {
+        var tex = Texture.initImage(image);
+        tex.setFilter(c.GL_NEAREST, c.GL_NEAREST);
         return .{
-            .texture = Texture.initImage(image),
+            .texture = tex,
             .glyph_width = glyph_width,
             .glyph_height = glyph_height,
             .width_ct = image.width / glyph_width,

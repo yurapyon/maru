@@ -9,6 +9,12 @@ const math = @import("math.zig");
 
 //;
 
+// TODO
+//   image/texture width and height could be i32, to make it easier to work with texture regions
+//     currently only using them to denote "these numbers are positive"
+
+//;
+
 pub var joystick_ctx_reference: ?*Context = null;
 
 const Error = error{
@@ -317,8 +323,8 @@ pub const Texture = struct {
             c.GL_TEXTURE_2D,
             0,
             c.GL_RGBA,
-            @intCast(c.GLint, image.width),
-            @intCast(c.GLint, image.height),
+            @intCast(c.GLint, width),
+            @intCast(c.GLint, height),
             0,
             c.GL_RGBA,
             c.GL_UNSIGNED_BYTE,
@@ -329,8 +335,8 @@ pub const Texture = struct {
 
         return .{
             .texture = tex,
-            .width = image.width,
-            .height = image.height,
+            .width = width,
+            .height = height,
         };
     }
 

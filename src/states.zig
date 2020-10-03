@@ -1,180 +1,243 @@
 const std = @import("std");
-
-const nitori = @import("nitori");
-const vtable = nitori.vtable;
-
-const assert = std.debug.assert;
-
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 
-// global resources needs a way to allocate new state data
+const assert = std.debug.assert;
 
-pub fn StateMachine(comptime T: type) type {
-    return struct {
-        const Self = @This();
+const nitori = @import("nitori");
+const interface = nitori.interface;
 
-        pub const State = struct {
-            const VTable = struct {
-                pub const Impl = @Type(.Opaque);
+//;
 
-                start: ?fn (*Impl, T) void,
-                stop: ?fn (*Impl, T) void,
-                pause: ?fn (*Impl, T) void,
-                unpause: ?fn (*Impl, T) void,
-                frame: ?fn (*Impl, T) ?Transition,
-                fixed_frame: ?fn (*Impl, T) void,
-                frame_hidden: ?fn (*Impl, T) void,
-                fixed_frame_hidden: ?fn (*Impl, T) void,
+// start is used for initializing load routines
+//   init data and allocate
+//   TODO should statemachine return allocator errors?
+// stop is used for deiniting data
 
-                pub fn start(_s: *Impl, _t: T) void {}
-                pub fn stop(_s: *Impl, _t: T) void {}
-                pub fn pause(_s: *Impl, _t: T) void {}
-                pub fn unpause(_s: *Impl, _t: T) void {}
-                pub fn frame(_s: *Impl, _t: T) ?Transition {
-                    return null;
-                }
-                pub fn fixed_frame(_s: *Impl, _t: T) void {}
-                pub fn frame_hidden(_s: *Impl, _t: T) void {}
-                pub fn fixed_frame_hidden(_s: *Impl, _t: T) void {}
-            };
+// states will need to allocate
+//   better to do it in start and stop rather than init and deinit
+//     states are usually single purpose and only serve to be put in the state machine
+//   allocations for the actual state instances should be handled by some global ctx
+//   state machine doesnt care
 
-            vtable: *const VTable,
-            impl: *VTable.Impl,
+//;
 
-            pub fn init(state: anytype) State {
-                return .{
-                    .vtable = comptime vtable.populate(VTable, @typeInfo(@TypeOf(state)).Pointer.child),
-                    .impl = @ptrCast(*VTable.Impl, state),
-                };
-            }
+pub const Transition = union(enum) {
+    Pop,
+    Push: State,
+    Swap: State,
+};
 
-            pub fn start(self: *State, immut_data: T) void {
-                self.vtable.start.?(self.impl, immut_data);
-            }
+pub const State = struct {
+    const VTable = struct {
+        start: fn (State) void = _start,
+        stop: fn (State) void = _stop,
+        pause: fn (State) void = _pause,
+        unpause: fn (State) void = _unpause,
+        frame: fn (State) ?Transition = _frame,
+        fixed_frame: fn (State) void = _fixed_frame,
+        frame_hidden: fn (State) void = _frame_hidden,
+        fixed_frame_hidden: fn (State) void = _fixed_frame_hidden,
 
-            pub fn stop(self: *State, immut_data: T) void {
-                self.vtable.stop.?(self.impl, immut_data);
-            }
-
-            pub fn pause(self: *State, immut_data: T) void {
-                self.vtable.pause.?(self.impl, immut_data);
-            }
-
-            pub fn unpause(self: *State, immut_data: T) void {
-                self.vtable.unpause.?(self.impl, immut_data);
-            }
-
-            pub fn frame(self: *State, immut_data: T) ?Transition {
-                return self.vtable.frame.?(self.impl, immut_data);
-            }
-
-            pub fn fixed_frame(self: *State, immut_data: T) void {
-                self.vtable.fixed_frame.?(self.impl, immut_data);
-            }
-
-            pub fn frame_hidden(self: *State, immut_data: T) void {
-                self.vtable.frame_hidden.?(self.impl, immut_data);
-            }
-
-            pub fn fixed_frame_hidden(self: *State, immut_data: T) void {
-                self.vtable.fixed_frame_hidden.?(self.impl, immut_data);
-            }
-        };
-
-        pub const Transition = union(enum) {
-            Pop,
-            Push: State,
-            Swap: State,
-        };
-
-        //;
-
-        states: ArrayList(State),
-        transition: ?Transition,
-
-        pub fn init(allocator: *Allocator) Self {
-            const states = ArrayList(State).init(allocator);
-            return .{
-                .states = states,
-                .transition = null,
-            };
+        pub fn _start(_s: State) void {}
+        pub fn _stop(_s: State) void {}
+        pub fn _pause(_s: State) void {}
+        pub fn _unpause(_s: State) void {}
+        pub fn _frame(_s: State) ?Transition {
+            return null;
         }
-
-        pub fn deinit(self: *Self) void {
-            self.states.deinit();
-        }
-
-        //;
-
-        // must be called once
-        pub fn start(self: *Self, state: State, immut_data: T) !void {
-            try self.states.append(state);
-            self.states.items[self.states.items.len - 1].start(immut_data);
-        }
-
-        pub fn maybe_do_transition(self: *Self, immut_data: T) !void {
-            assert(self.states.items.len > 0);
-            if (self.transition) |tr| {
-                switch (tr) {
-                    .Pop => return self.pop(immut_data),
-                    .Push => |st| return self.push(st, immut_data),
-                    .Swap => |st| return self.swap(st, immut_data),
-                }
-            }
-        }
-
-        pub fn frame(self: *Self, immut_data: T) void {
-            assert(self.states.items.len > 0);
-            var i: usize = 0;
-            while (i < self.states.items.len - 1) : (i += 1) {
-                self.states.items[i].frame_hidden(immut_data);
-            }
-            self.transition = self.states.items[self.states.items.len - 1].frame(immut_data);
-        }
-
-        pub fn fixed_frame(self: *Self, immut_data: T) void {
-            assert(self.states.items.len > 0);
-            var i: usize = 0;
-            while (i < self.states.items.len - 1) : (i += 1) {
-                self.states.items[i].fixed_frame_hidden(immut_data);
-            }
-            self.states.items[self.states.items.len - 1].fixed_frame(immut_data);
-        }
-
-        //;
-
-        fn pop(self: *Self, immut_data: T) !void {
-            assert(self.states.items.len != 0);
-            assert(self.states.items.len != 1);
-
-            var prev = self.states.pop().?;
-            prev.stop(immut_data);
-
-            var next = self.states.items[self.states.items.len - 1];
-            next.unpause(immut_data);
-        }
-
-        fn push(self: *Self, state: State, immut_data: T) !void {
-            var prev = self.states.items[self.states.items.len - 1];
-            prev.pause(immut_data);
-
-            try self.states.append(state);
-            var next = self.states.items[self.states.items.len - 1];
-            next.start(immut_data);
-        }
-
-        fn swap(self: *Self, state: State, immut_data: T) !void {
-            assert(self.states.items.len != 0);
-
-            var prev = self.states.pop().?;
-            prev.stop(immut_data);
-
-            try self.states.append(state);
-            var next = self.states.items[self.states.items.len - 1];
-            next.start(immut_data);
-        }
+        pub fn _fixed_frame(_s: State) void {}
+        pub fn _frame_hidden(_s: State) void {}
+        pub fn _fixed_frame_hidden(_s: State) void {}
     };
-}
+
+    impl: interface.Impl,
+    vtable: *const VTable,
+};
+
+pub const StateMachine = struct {
+    const Self = @This();
+
+    states: ArrayList(State),
+    transition: ?Transition,
+
+    pub fn init(allocator: *Allocator) Self {
+        const states = ArrayList(State).init(allocator);
+        return .{
+            .states = states,
+            .transition = null,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.states.deinit();
+    }
+
+    //;
+
+    pub fn start(self: *Self, state: State) Allocator.Error!void {
+        try self.states.append(state);
+        state.vtable.start(state);
+    }
+
+    pub fn stop(self: *Self) void {
+        // TODO
+        // assert theres only one state?
+        // stop all states
+    }
+
+    pub fn maybe_do_transition(self: *Self) Allocator.Error!void {
+        if (self.transition) |tr| {
+            switch (tr) {
+                .Pop => self.pop(),
+                .Push => |st| try self.push(st),
+                .Swap => |st| try self.swap(st),
+            }
+        }
+    }
+
+    pub fn frame(self: *Self) void {
+        assert(self.states.items.len > 0);
+        for (self.states.items[0..(self.states.items.len - 1)]) |state| {
+            state.vtable.frame_hidden(state);
+        }
+        const last_state = self.states.items[self.states.items.len - 1];
+        self.transition = last_state.vtable.frame(last_state);
+    }
+
+    pub fn fixed_frame(self: *Self) void {
+        assert(self.states.items.len > 0);
+        for (self.states.items[0..(self.states.items.len - 1)]) |state| {
+            state.vtable.fixed_frame_hidden(state);
+        }
+        const last_state = self.states.items[self.states.items.len - 1];
+        last_state.vtable.fixed_frame(last_state);
+    }
+
+    //;
+
+    fn pop(self: *Self) void {
+        assert(self.states.items.len != 0);
+        assert(self.states.items.len != 1);
+
+        var prev = self.states.pop();
+        prev.vtable.stop(prev);
+
+        var next = self.states.items[self.states.items.len - 1];
+        next.vtable.unpause(next);
+    }
+
+    fn push(self: *Self, state: State) Allocator.Error!void {
+        var prev = self.states.items[self.states.items.len - 1];
+        prev.vtable.pause(prev);
+
+        try self.states.append(state);
+        var next = self.states.items[self.states.items.len - 1];
+        next.vtable.start(next);
+    }
+
+    fn swap(self: *Self, state: State) Allocator.Error!void {
+        assert(self.states.items.len != 0);
+
+        var prev = self.states.pop();
+        prev.vtable.stop(prev);
+
+        try self.states.append(state);
+        var next = self.states.items[self.states.items.len - 1];
+        next.vtable.start(next);
+    }
+};
 
 // tests ===
+
+const A = struct {
+    const Self = @This();
+
+    x: u8,
+
+    fn state(self: *Self) State {
+        return .{
+            .impl = interface.Impl.init(self),
+            .vtable = &comptime State.VTable{
+                .start = start,
+                .stop = stop,
+                .pause = pause,
+                .unpause = unpause,
+                .frame = frame,
+                .fixed_frame = fixed_frame,
+                .frame_hidden = frame_hidden,
+                .fixed_frame_hidden = fixed_frame_hidden,
+            },
+        };
+    }
+
+    fn start(s: State) void {
+        var self = s.impl.cast(Self);
+        std.log.warn("start A {}\n", .{self.x});
+    }
+
+    fn stop(s: State) void {
+        var self = s.impl.cast(Self);
+        std.log.warn("stop A {}\n", .{self.x});
+    }
+
+    fn pause(s: State) void {
+        var self = s.impl.cast(Self);
+        std.log.warn("pause A {}\n", .{self.x});
+    }
+
+    fn unpause(s: State) void {
+        var self = s.impl.cast(Self);
+        std.log.warn("unpause A {}\n", .{self.x});
+    }
+
+    fn frame(s: State) ?Transition {
+        var self = s.impl.cast(Self);
+        std.log.warn("frame A {}\n", .{self.x});
+        return null;
+    }
+
+    fn fixed_frame(s: State) void {
+        var self = s.impl.cast(Self);
+        std.log.warn("fixed_frame A {}\n", .{self.x});
+    }
+
+    fn frame_hidden(s: State) void {
+        var self = s.impl.cast(Self);
+        std.log.warn("frame_hidden A {}\n", .{self.x});
+    }
+
+    fn fixed_frame_hidden(s: State) void {
+        var self = s.impl.cast(Self);
+        std.log.warn("fixed_frame_hidden A {}\n", .{self.x});
+    }
+};
+
+// tests ===
+
+// TODO test transitions work when returned from frame funcs
+
+test "StateMachine" {
+    var sm = StateMachine.init(std.testing.allocator);
+    defer sm.deinit();
+
+    var a1 = A{ .x = 1 };
+    var a2 = A{ .x = 2 };
+    var a3 = A{ .x = 3 };
+
+    try sm.start(a1.state());
+    sm.frame();
+    sm.fixed_frame();
+
+    try sm.push(a2.state());
+    sm.frame();
+    sm.fixed_frame();
+
+    try sm.swap(a3.state());
+    sm.frame();
+    sm.fixed_frame();
+
+    sm.pop();
+
+    sm.stop();
+}

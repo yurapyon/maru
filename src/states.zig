@@ -29,7 +29,7 @@ pub const Transition = union(enum) {
 };
 
 pub const State = struct {
-    const VTable = struct {
+    pub const VTable = struct {
         start: fn (State) void = _start,
         stop: fn (State) void = _stop,
         pause: fn (State) void = _pause,

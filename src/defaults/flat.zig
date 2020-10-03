@@ -296,7 +296,7 @@ pub const DrawDefaults = struct {
     mahou_texture: Texture,
     ibm_font: FixedFont,
 
-    pub fn init(workspace_allocator: *Allocator) !Self {
+    pub fn init(workspace_allocator: *Allocator) Allocator.Error!Self {
         var white = try Image.init(workspace_allocator, 1, 1);
         white.data[0] = .{
             .r = 255,
@@ -306,26 +306,41 @@ pub const DrawDefaults = struct {
         };
         defer white.deinit();
 
-        var mahou = try Image.initFromMemory(workspace_allocator, content.images.mahou);
+        var mahou = Image.initFromMemory(
+            workspace_allocator,
+            content.images.mahou,
+        ) catch |err| switch (err) {
+            error.OutOfMemory => |e| return e,
+            else => unreachable,
+        };
         defer mahou.deinit();
 
-        var codepage437 = try gfx.Image.initFromMemory(
+        var codepage437 = gfx.Image.initFromMemory(
             workspace_allocator,
             content.images.codepage437,
-        );
+        ) catch |err| switch (err) {
+            error.OutOfMemory => |e| return e,
+            else => unreachable,
+        };
         defer codepage437.deinit();
 
         return DrawDefaults{
-            .program = try Program2d.initDefault(
+            .program = Program2d.initDefault(
                 workspace_allocator,
                 null,
                 null,
-            ),
-            .spritebatch_program = try Program2d.initDefaultSpritebatch(
+            ) catch |err| switch (err) {
+                error.OutOfMemory => |e| return e,
+                else => unreachable,
+            },
+            .spritebatch_program = Program2d.initDefaultSpritebatch(
                 workspace_allocator,
                 null,
                 null,
-            ),
+            ) catch |err| switch (err) {
+                error.OutOfMemory => |e| return e,
+                else => unreachable,
+            },
             .white_texture = Texture.initImage(white),
             .mahou_texture = Texture.initImage(mahou),
             .ibm_font = FixedFont.init(codepage437, 9, 16),

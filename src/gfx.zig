@@ -17,14 +17,14 @@ const math = @import("math.zig");
 
 pub var joystick_ctx_reference: ?*Context = null;
 
-const Error = error{
-    ContextInitError,
-    ShaderCompilationError,
-    ProgramLinkError,
-    ImageInitError,
-};
-
 pub const Context = struct {
+    const Self = @This();
+
+    pub const Error = error{
+        GlfwInit,
+        WindowInit,
+    };
+
     pub const Settings = struct {
         ogl_version_major: u32 = 3,
         ogl_version_minor: u32 = 3,
@@ -34,8 +34,6 @@ pub const Context = struct {
         is_resizable: bool = true,
         windowSizeCallback: ?fn (*Context) void = null,
     };
-
-    const Self = @This();
 
     settings: Settings,
     window: *c.GLFWwindow,
@@ -56,7 +54,7 @@ pub const Context = struct {
 
     pub fn init(self: *Self, settings: Settings) !void {
         if (c.glfwInit() != c.GLFW_TRUE) {
-            return error.ContextInitError;
+            return error.GlfwInit;
         }
         errdefer c.glfwTerminate();
 
@@ -74,7 +72,7 @@ pub const Context = struct {
             settings.window_name,
             null,
             null,
-        ) orelse return error.ContextInitError;
+        ) orelse return error.WindowInit;
         errdefer c.glfwDestroyWindow(window);
 
         c.glfwMakeContextCurrent(window);
@@ -132,6 +130,8 @@ pub const Context = struct {
 pub const Shader = struct {
     const Self = @This();
 
+    pub const Error = error{Compile};
+
     shader: c.GLuint,
 
     // TODO to handle errors here probably just use a Result
@@ -165,7 +165,7 @@ pub const Shader = struct {
 
             std.log.info("{}\n", .{buf});
 
-            return error.ShaderCompilationError;
+            return error.Compile;
         }
 
         return Self{
@@ -182,6 +182,8 @@ pub const Shader = struct {
 
 pub const Program = struct {
     const Self = @This();
+
+    pub const Error = error{Link};
 
     program: c.GLuint,
 
@@ -200,7 +202,7 @@ pub const Program = struct {
 
         if (success != c.GL_TRUE) {
             // TODO
-            return error.ProgramLinkError;
+            return error.Link;
         }
 
         return Self{
@@ -230,6 +232,8 @@ pub const Program = struct {
 pub const Image = struct {
     const Self = @This();
 
+    const Error = error{Load} || Allocator.Error;
+
     pub const Color = extern struct {
         r: u8,
         g: u8,
@@ -246,7 +250,7 @@ pub const Image = struct {
         allocator: *Allocator,
         width: u32,
         height: u32,
-    ) !Self {
+    ) Allocator.Error!Self {
         const data_len = width * height;
         const data = try allocator.alloc(Color, data_len);
         return Self{
@@ -257,7 +261,7 @@ pub const Image = struct {
         };
     }
 
-    pub fn initFromMemory(allocator: *Allocator, buffer: []const u8) !Self {
+    pub fn initFromMemory(allocator: *Allocator, buffer: []const u8) Error!Self {
         var w: c_int = undefined;
         var h: c_int = undefined;
         const raw_data = c.stbi_load_from_memory(
@@ -267,7 +271,7 @@ pub const Image = struct {
             &h,
             null,
             4,
-        ) orelse return error.ImageInitError;
+        ) orelse return error.Load;
         defer c.stbi_image_free(raw_data);
         const data_len = @intCast(usize, w * h);
 
@@ -283,10 +287,10 @@ pub const Image = struct {
         };
     }
 
-    pub fn initFromFile(allocator: *Allocator, path: [:0]const u8) !Self {
+    pub fn initFromFile(allocator: *Allocator, path: [:0]const u8) Error!Self {
         var w: c_int = undefined;
         var h: c_int = undefined;
-        const raw_data = c.stbi_load(path, &w, &h, null, 4) orelse return error.ImageInitError;
+        const raw_data = c.stbi_load(path, &w, &h, null, 4) orelse return error.Load;
         defer c.stbi_image_free(raw_data);
         const data_len = @intCast(usize, w * h);
 

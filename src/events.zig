@@ -7,6 +7,32 @@ const gfx = @import("gfx.zig");
 
 //;
 
+pub const ButtonState = enum {
+    const Self = @This();
+
+    Pressed,
+    Held,
+    Released,
+    Off,
+
+    pub fn initFromActions(now: Action, last: Action) Self {
+        if (now != last) {
+            return switch (now) {
+                .Press => .Pressed,
+                .Repeat => .Held,
+                .Release => .Released,
+            };
+        } else {
+            return switch (now) {
+                // note: two presses in a row sounds unlikely
+                .Press => .Held,
+                .Repeat => .Held,
+                .Release => .Off,
+            };
+        }
+    }
+};
+
 pub const Action = enum(u8) {
     const Self = @This();
 
@@ -261,6 +287,9 @@ pub const JoystickEvent = struct {
 };
 
 pub const GamepadData = struct {
+    const button_ct = @typeInfo(Button).Enum.fields.len;
+    const axis_ct = @typeInfo(Axis).Enum.fields.len;
+
     pub const Button = enum(usize) {
         A,
         B,
@@ -289,8 +318,12 @@ pub const GamepadData = struct {
     };
 
     is_connected: bool,
-    buttons: [15]Action,
-    axes: [6]f32,
+
+    buttons: [button_ct]ButtonState,
+    glfw_buttons_last: [button_ct]Action,
+    glfw_buttons: [button_ct]Action,
+
+    axes: [axis_ct]f32,
 
     pub fn getButtonState(self: Self, button: Button) Action {
         return self.buttons[@enumToInt(button)];
@@ -334,11 +367,15 @@ pub const GamepadData = struct {
 // };
 
 // TODO
+//   gamepad
 //   update mappings
 //     allow player to put in thier own mappings if they need to
 //   look into how calibration works
-// note, by not using one array for events,
-//   info is lost what time events come in, probably not a huge problem
+
+// note:
+//   by not using one array for events,
+//     info is lost what order the events come in across different types
+//   probably not a huge problem
 
 pub const EventHandler = struct {
     const Self = @This();
@@ -375,11 +412,13 @@ pub const EventHandler = struct {
         while (id < c.GLFW_JOYSTICK_LAST) : (id += 1) {
             if (c.glfwJoystickPresent(id) == c.GLFW_TRUE) {
                 if (c.glfwJoystickIsGamepad(id) == c.GLFW_TRUE) {
-                    // TODO could poll state here, just for completeness
+                    // TODO could poll gamepad state here, just for completeness
                     ret.gamepads[@intCast(usize, id)] = .{
                         .is_connected = true,
-                        .buttons = undefined,
-                        .axes = undefined,
+                        .buttons = [_]ButtonState{.Off} ** GamepadData.button_ct,
+                        .glfw_buttons = [_]Action{.Release} ** GamepadData.button_ct,
+                        .glfw_buttons_last = [_]Action{.Release} ** GamepadData.button_ct,
+                        .axes = [_]f32{0} ** GamepadData.axis_ct,
                     };
                 } else {
                     // TODO
@@ -400,6 +439,8 @@ pub const EventHandler = struct {
         self.key_events.deinit();
     }
 
+    // TODO have callback report an error somehow,
+    //   then this can return the error
     pub fn poll(self: *Self) void {
         self.key_events.items.len = 0;
         self.char_events.items.len = 0;
@@ -420,8 +461,13 @@ pub const EventHandler = struct {
                 //     means that it is connected and is a gamepad
                 _ = c.glfwGetGamepadState(@intCast(c_int, id), &state);
 
-                for (state.buttons) |action, i| {
-                    gpd.buttons[i] = Action.init(action);
+                {
+                    var i: usize = 0;
+                    while (i < GamepadData.button_ct) : (i += 1) {
+                        gpd.glfw_buttons_last[i] = gpd.glfw_buttons[i];
+                        gpd.glfw_buttons[i] = Action.init(state.buttons[i]);
+                        gpd.buttons[i] = ButtonState.initFromActions(gpd.glfw_buttons[i], gpd.glfw_buttons_last[i]);
+                    }
                 }
 
                 for (state.axes) |val, i| {

@@ -1,4 +1,6 @@
 const std = @import("std");
+const testing = std.testing;
+const expect = testing.expect;
 
 //;
 
@@ -26,10 +28,38 @@ pub fn TVec2(comptime T: type) type {
         }
 
         pub fn zero() Self {
-            if (@typeInfo(T) == .Float) {
-                return Self.init(0., 0.);
-            } else if (@typeInfo(T) == .Int) {
-                return Self.init(0, 0);
+            return Self.init(0, 0);
+        }
+
+        //;
+
+        pub fn cast(self: Self, comptime U: type) TVec2(U) {
+            comptime assertIsNumberType(U);
+
+            if (@typeInfo(Self) == .Float) {
+                if (@typeInfo(U) == .Float) {
+                    return .{
+                        .x = @floatCast(U, self.x),
+                        .y = @floatCast(U, self.y),
+                    };
+                } else {
+                    return .{
+                        .x = @floatToInt(U, self.x),
+                        .y = @floatToInt(U, self.y),
+                    };
+                }
+            } else {
+                if (@typeInfo(U) == .Float) {
+                    return .{
+                        .x = @intToFloat(U, self.x),
+                        .y = @intToFloat(U, self.y),
+                    };
+                } else {
+                    return .{
+                        .x = @intCast(U, self.x),
+                        .y = @intCast(U, self.y),
+                    };
+                }
             }
         }
 
@@ -67,6 +97,13 @@ pub fn TVec2(comptime T: type) type {
             return .{
                 .x = 1. / self.x,
                 .y = 1. / self.y,
+            };
+        }
+
+        pub fn multScalar(self: Self, scalar: T) Self {
+            return .{
+                .x = self.x * scalar,
+                .y = self.y * scalar,
             };
         }
 
@@ -341,9 +378,6 @@ pub const Mat3 = struct {
     }
 };
 
-const testing = std.testing;
-const expect = testing.expect;
-
 // TODO more tests
 test "Mat3" {
     const iden = Mat3.identity();
@@ -355,6 +389,58 @@ test "Mat3" {
     const mul = v2.multMat3(trans);
     expect(mul.isEqualTo(Vec2.init(10., 15.)));
 }
+
+//;
+
+pub const Mat4 = struct {
+    const Self = @This();
+
+    // column major
+    data: [4][4]f32,
+
+    pub fn zero() Self {
+        var ret = Self{ .data = undefined };
+        var i: usize = 0;
+        var j: usize = 0;
+        while (i < 4) : (i += 1) {
+            j = 0;
+            while (j < 4) : (j += 1) {
+                ret.data[i][j] = 0.;
+            }
+        }
+        return ret;
+    }
+
+    pub fn identity() Self {
+        var ret = Self.zero();
+        ret.data[0][0] = 1.;
+        ret.data[1][1] = 1.;
+        ret.data[2][2] = 1.;
+        ret.data[3][3] = 1.;
+        return ret;
+    }
+
+    //;
+
+    pub fn isEqualTo(self: Self, other: Self) bool {
+        return self.data[0][0] == other.data[0][0] and
+            self.data[1][0] == other.data[1][0] and
+            self.data[2][0] == other.data[2][0] and
+            self.data[3][0] == other.data[3][0] and
+            self.data[0][1] == other.data[0][1] and
+            self.data[1][1] == other.data[1][1] and
+            self.data[2][1] == other.data[2][1] and
+            self.data[3][1] == other.data[3][1] and
+            self.data[0][2] == other.data[0][2] and
+            self.data[1][2] == other.data[1][2] and
+            self.data[2][2] == other.data[2][2] and
+            self.data[3][2] == other.data[3][2] and
+            self.data[0][3] == other.data[0][3] and
+            self.data[1][3] == other.data[1][3] and
+            self.data[2][3] == other.data[2][3] and
+            self.data[3][3] == other.data[3][3];
+    }
+};
 
 //;
 
@@ -466,6 +552,27 @@ pub const Transform2d = extern struct {
 
 //;
 
+pub const Quaternion = extern struct {
+    const Self = @This();
+
+    x: f32,
+    y: f32,
+    z: f32,
+    w: f32,
+};
+
+//;
+
+pub const Transform3d = extern struct {
+    const Self = @This();
+
+    translation: Vec3,
+    rotation: Quaternion,
+    scale: Vec3,
+};
+
+//;
+
 pub const Color = extern struct {
     const Self = @This();
 
@@ -484,6 +591,10 @@ pub const Color = extern struct {
     }
 
     pub fn white() Self {
-        return Self.initRgba(1., 1., 1., 1.);
+        return Self.initRgba(1, 1, 1, 1);
+    }
+
+    pub fn black() Self {
+        return Self.initRgba(0, 0, 0, 1);
     }
 };

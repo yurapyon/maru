@@ -6,6 +6,7 @@ pub const coordinates = @import("coordinates.zig");
 pub const events = @import("events.zig");
 pub const frame_timer = @import("frame_timer.zig");
 pub const gfx = @import("gfx.zig");
+pub const gltf = @import("gltf.zig");
 pub const math = @import("math.zig");
 pub const states = @import("states.zig");
 pub const tiled = @import("tiled.zig");
@@ -21,6 +22,7 @@ test "" {
     _ = events;
     _ = frame_timer;
     _ = gfx;
+    _ = gltf;
     _ = math;
     _ = states;
     _ = tiled;

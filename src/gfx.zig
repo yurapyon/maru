@@ -524,7 +524,7 @@ pub const VertexArray = struct {
             attrib.ty,
             if (attrib.is_normalized) c.GL_TRUE else c.GL_FALSE,
             @intCast(c_int, attrib.stride),
-            @intToPtr(*const c_void, attrib.offset),
+            @intToPtr(*allowzero const c_void, attrib.offset),
         );
         c.glVertexAttribDivisor(num, @intCast(c_uint, attrib.divisor));
     }

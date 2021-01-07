@@ -8,13 +8,13 @@ const Mat3 = math.Mat3;
 
 //;
 
-pub const Error = error{Underflow};
-
 // TODO take a transform2d and turn it into transforms
 //        maybe add shear to transform 2d? kinda weird
 
 pub const CoordinateStack = struct {
     const Self = @This();
+
+    pub const Error = error{Underflow};
 
     pub const Transform = union(enum) {
         Translate: Vec2,
@@ -44,7 +44,7 @@ pub const CoordinateStack = struct {
         self.stack.items.len = 0;
     }
 
-    pub fn push(self: *Self, t: Transform) !void {
+    pub fn push(self: *Self, t: Transform) Allocator.Error!void {
         const temp = switch (t) {
             .Translate => |v2| Mat3.translation(v2),
             .Rotate => |f| Mat3.rotation(f),
@@ -55,7 +55,7 @@ pub const CoordinateStack = struct {
         try self.stack.append(t);
     }
 
-    pub fn pop(self: *Self) !void {
+    pub fn pop(self: *Self) Error!void {
         if (self.stack.items.len < 1) {
             return error.Underflow;
         }

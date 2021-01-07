@@ -225,6 +225,7 @@ pub const Program2d = struct {
         self.program.deinit();
     }
 
+    // TODO move this out somewhere so it can be used for 3d
     fn applyEffectToDefaultShader(
         allocator: *Allocator,
         comptime default_shader: []const u8,
@@ -452,14 +453,18 @@ const BoundDrawer2d = struct {
         });
     }
 
-    // TODO handle errors
-    fn pushCoord(self: *Self, t: CoordinateStack.Transform) !void {
+    fn pushCoord(self: *Self, t: CoordinateStack.Transform) Allocator.Error!void {
         try self.drawer.coord_stack.push(t);
         self.program.locations.view.setMat3(self.drawer.coord_stack.composed);
     }
 
-    fn popCoord(self: *Self) !void {
+    fn popCoord(self: *Self) CoordinateStack.Error!void {
         try self.drawer.coord_stack.pop();
+        self.program.locations.view.setMat3(self.drawer.coord_stack.composed);
+    }
+
+    fn clearCoords(self: *Self) void {
+        self.drawer.coord_stack.clear();
         self.program.locations.view.setMat3(self.drawer.coord_stack.composed);
     }
 };
@@ -489,14 +494,19 @@ pub const BoundSpritebatch = struct {
         self.base.setDiffuse(tex);
     }
 
-    pub fn pushCoord(self: *Self, t: CoordinateStack.Transform) !void {
+    pub fn pushCoord(self: *Self, t: CoordinateStack.Transform) Allocator.Error!void {
         self.drawNow();
         try self.base.pushCoord(t);
     }
 
-    pub fn popCoord(self: *Self) !void {
+    pub fn popCoord(self: *Self) CoordinateStack.Error!void {
         self.drawNow();
         try self.base.popCoord();
+    }
+
+    pub fn clearCoords(self: *Self) void {
+        self.drawNow();
+        self.base.clearCoords();
     }
 
     //;

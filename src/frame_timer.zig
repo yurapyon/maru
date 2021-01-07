@@ -10,9 +10,9 @@ pub const FrameTimer = struct {
     last: u64,
     last_delta: f64,
 
-    pub fn start() Self {
-        var tm = Timer.start();
-        return .{
+    pub fn start() Timer.Error!Self {
+        var tm = try Timer.start();
+        return Self{
             .tm = tm,
             .last = tm.now(),
             .last_delta = 0.,

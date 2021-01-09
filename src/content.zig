@@ -12,3 +12,7 @@ pub const shaders = struct {
     pub const default_spritebatch_vert = @embedFile("../content/shaders/spritebatch_vert.incl.glsl");
     pub const default_spritebatch_frag = @embedFile("../content/shaders/spritebatch_frag.incl.glsl");
 };
+
+pub const gltf = struct {
+    pub const suzanne = @embedFile("../content/gltf/suzanne.gltf");
+};

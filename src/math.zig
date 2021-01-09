@@ -149,6 +149,14 @@ pub fn TVec3(comptime T: type) type {
             };
         }
 
+        pub fn zero() Self {
+            return Self.init(0, 0, 0);
+        }
+
+        pub fn one() Self {
+            return Self.init(1, 1, 1);
+        }
+
         //;
 
         pub fn isEqualTo(self: Self, other: Self) bool {
@@ -272,9 +280,9 @@ pub const Mat3 = struct {
 
     pub fn identity() Self {
         var ret = Self.zero();
-        ret.data[0][0] = 1.;
-        ret.data[1][1] = 1.;
-        ret.data[2][2] = 1.;
+        ret.data[0][0] = 1;
+        ret.data[1][1] = 1;
+        ret.data[2][2] = 1;
         return ret;
     }
 
@@ -312,10 +320,10 @@ pub const Mat3 = struct {
 
     pub fn orthoScreen(dimensions: UVec2) Self {
         var ret = Self.identity();
-        ret.data[0][0] = 2. / @intToFloat(f32, dimensions.x);
-        ret.data[1][1] = -2. / @intToFloat(f32, dimensions.y);
-        ret.data[2][0] = -1.;
-        ret.data[2][1] = 1.;
+        ret.data[0][0] = 2 / @intToFloat(f32, dimensions.x);
+        ret.data[1][1] = -2 / @intToFloat(f32, dimensions.y);
+        ret.data[2][0] = -1;
+        ret.data[2][1] = 1;
         return ret;
     }
 
@@ -381,13 +389,13 @@ pub const Mat3 = struct {
 // TODO more tests
 test "Mat3" {
     const iden = Mat3.identity();
-    const trans = Mat3.translation(Vec2.init(10., 15.));
+    const trans = Mat3.translation(Vec2.init(10, 15));
     expect(trans.isEqualTo(iden.mult(trans)));
     expect(trans.isEqualTo(trans.mult(iden)));
 
-    const v2 = Vec2.init(0., 0.);
+    const v2 = Vec2.init(0, 0);
     const mul = v2.multMat3(trans);
-    expect(mul.isEqualTo(Vec2.init(10., 15.)));
+    expect(mul.isEqualTo(Vec2.init(10, 15)));
 }
 
 //;
@@ -413,10 +421,10 @@ pub const Mat4 = struct {
 
     pub fn identity() Self {
         var ret = Self.zero();
-        ret.data[0][0] = 1.;
-        ret.data[1][1] = 1.;
-        ret.data[2][2] = 1.;
-        ret.data[3][3] = 1.;
+        ret.data[0][0] = 1;
+        ret.data[1][1] = 1;
+        ret.data[2][2] = 1;
+        ret.data[3][3] = 1;
         return ret;
     }
 
@@ -463,11 +471,7 @@ pub fn AABB(comptime T: type) type {
         }
 
         pub fn identity() Self {
-            if (@typeInfo(T) == .Float) {
-                return Self.init(0., 0., 1., 1.);
-            } else if (@typeInfo(T) == .Int) {
-                return Self.init(0, 0, 1, 1);
-            }
+            return Self.init(0, 0, 1, 1);
         }
 
         //;
@@ -546,7 +550,7 @@ pub const Transform2d = extern struct {
     }
 
     pub fn identity() Self {
-        return Self.init(0., 0., 0., 1., 1.);
+        return Self.init(0, 0, 0, 1, 1);
     }
 };
 
@@ -559,6 +563,19 @@ pub const Quaternion = extern struct {
     y: f32,
     z: f32,
     w: f32,
+
+    pub fn init(x: f32, y: f32, z: f32, w: f32) Self {
+        return .{
+            .x = x,
+            .y = y,
+            .z = z,
+            .w = w,
+        };
+    }
+
+    pub fn identity() Self {
+        return Self.init(0, 0, 0, 1);
+    }
 };
 
 //;
@@ -569,6 +586,14 @@ pub const Transform3d = extern struct {
     translation: Vec3,
     rotation: Quaternion,
     scale: Vec3,
+
+    pub fn identity() Self {
+        return .{
+            .translation = Vec3.zero(),
+            .rotation = Quaternion.identity(),
+            .scale = Vec3.one(),
+        };
+    }
 };
 
 //;

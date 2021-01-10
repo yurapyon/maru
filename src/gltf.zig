@@ -23,6 +23,7 @@ usingnamespace math;
 //     default animated shader
 
 // TODO uri type?
+// get rid of all float cast and int cast in here and just use i64 and f64?
 
 //;
 
@@ -69,6 +70,15 @@ fn jsonValueFreeClone(allocator: *Allocator, j: *json.Value) void {
         },
         else => {},
     }
+}
+
+fn jsonValueToFloat(comptime T: type, j: json.Value) T {
+    return switch (j) {
+        .Float => |f| @floatCast(T, f),
+        .Integer => |i| @intToFloat(T, i),
+        // TODO this is probably okay as unreachable
+        else => unreachable,
+    };
 }
 
 //;
@@ -126,12 +136,16 @@ pub const Buffer = struct {
 };
 
 pub const BufferView = struct {
+    pub const Target = enum(c.GLenum) {
+        ArrayBuffer = c.GL_ARRAY_BUFFER,
+        ElementArrayBuffer = c.GL_ELEMENT_ARRAY_BUFFER,
+    };
+
     buffer: usize,
     byte_offset: ?usize = 0,
     byte_length: usize,
     byte_stride: ?usize = null,
-    // TODO target type
-    target: ?c.GLenum = null,
+    target: ?Target = null,
     name: ?[]u8 = null,
     extensions: ?Extensions = null,
     extras: ?Extras = null,
@@ -270,7 +284,7 @@ pub const Primitive = struct {
         Custom: []u8,
     };
 
-    // TODO verify
+    // TODO verify attributes will look like this
     pub const Attribute = struct {
         attribute_type: AttributeType,
         accessor: usize,
@@ -357,7 +371,7 @@ pub const TextureInfo = struct {
     extras: ?Extras = null,
 };
 
-// sparse values
+// TODO sparse values
 
 //;
 
@@ -394,6 +408,11 @@ pub const GlTF_Parser = struct {
         GlTF_VersionNotSupported,
         InvalidAccessor,
         InvalidBuffer,
+        InvalidBufferView,
+        InvalidCamera,
+        InvalidImage,
+        InvalidMaterial,
+        InvalidPbrMetallicRoughness,
     };
 
     allocator: *Allocator,
@@ -438,6 +457,18 @@ pub const GlTF_Parser = struct {
         if (root.Object.get("buffers")) |jv| {
             try parseBuffers(self, &ret, jv);
         }
+        if (root.Object.get("bufferViews")) |jv| {
+            try parseBufferViews(self, &ret, jv);
+        }
+        if (root.Object.get("cameras")) |jv| {
+            try parseCameras(self, &ret, jv);
+        }
+        if (root.Object.get("images")) |jv| {
+            try parseImages(self, &ret, jv);
+        }
+        if (root.Object.get("materials")) |jv| {
+            try parseMaterials(self, &ret, jv);
+        }
 
         // TODO
         if (root.Object.get("extensionsUsed")) |exts| {}
@@ -450,25 +481,29 @@ pub const GlTF_Parser = struct {
         self.freeAsset(gltf);
         self.freeAccessors(gltf);
         self.freeBuffers(gltf);
+        self.freeBufferViews(gltf);
+        self.freeCameras(gltf);
+        self.freeImages(gltf);
+        self.freeMaterials(gltf);
     }
 
     //;
 
-    fn parseAsset(self: *Self, gltf: *GlTF, j_asset: json.Value) !void {
+    fn parseAsset(self: *Self, gltf: *GlTF, j_val: json.Value) !void {
         // TODO handle memory leaks
-        if (j_asset.Object.get("copyright")) |jv| {
+        if (j_val.Object.get("copyright")) |jv| {
             gltf.asset.copyright = try self.allocator.dupe(u8, jv.String);
         }
-        if (j_asset.Object.get("generator")) |jv| {
+        if (j_val.Object.get("generator")) |jv| {
             gltf.asset.generator = try self.allocator.dupe(u8, jv.String);
         }
-        if (j_asset.Object.get("minVersion")) |jv| {
+        if (j_val.Object.get("minVersion")) |jv| {
             gltf.asset.min_version = try self.allocator.dupe(u8, jv.String);
         }
-        if (j_asset.Object.get("extensions")) |jv| {
+        if (j_val.Object.get("extensions")) |jv| {
             gltf.asset.extensions = try jsonValueDeepClone(self.allocator, jv);
         }
-        if (j_asset.Object.get("extras")) |jv| {
+        if (j_val.Object.get("extras")) |jv| {
             gltf.asset.extras = try jsonValueDeepClone(self.allocator, jv);
         }
     }
@@ -482,10 +517,11 @@ pub const GlTF_Parser = struct {
         if (gltf.asset.extras) |*ext| jsonValueFreeClone(self.allocator, ext);
     }
 
-    fn parseAccessors(self: *Self, gltf: *GlTF, j_accessors: json.Value) !void {
-        const len = j_accessors.Array.items.len;
+    fn parseAccessors(self: *Self, gltf: *GlTF, j_val: json.Value) !void {
+        const len = j_val.Array.items.len;
         gltf.accessors = try self.allocator.alloc(Accessor, len);
-        for (j_accessors.Array.items) |jv, i| {
+
+        for (j_val.Array.items) |jv, i| {
             const gl_type = jv.Object.get("componentType") orelse return Error.InvalidAccessor;
             const count = jv.Object.get("count") orelse return Error.InvalidAccessor;
             const data_type_str = (jv.Object.get("type") orelse return Error.InvalidAccessor).String;
@@ -507,83 +543,462 @@ pub const GlTF_Parser = struct {
                 return Error.InvalidAccessor;
             };
 
-            var acc = &gltf.accessors.?[i];
-            acc.* = .{
+            var curr = &gltf.accessors.?[i];
+            curr.* = .{
                 .component_type = @intToEnum(Accessor.ComponentType, @intCast(c.GLenum, gl_type.Integer)),
                 .count = @intCast(usize, count.Integer),
                 .data_type = data_type,
             };
 
             if (jv.Object.get("bufferView")) |jv_| {
-                acc.buffer_view = @intCast(usize, jv_.Integer);
+                curr.buffer_view = @intCast(usize, jv_.Integer);
             }
             if (jv.Object.get("byteOffset")) |jv_| {
-                acc.byte_offset = @intCast(usize, jv_.Integer);
+                curr.byte_offset = @intCast(usize, jv_.Integer);
             }
             if (jv.Object.get("normalized")) |jv_| {
-                acc.normalized = jv_.Bool;
+                curr.normalized = jv_.Bool;
             }
             if (jv.Object.get("name")) |jv_| {
-                acc.name = try self.allocator.dupe(u8, jv_.String);
+                curr.name = try self.allocator.dupe(u8, jv_.String);
             }
             if (jv.Object.get("extensions")) |jv_| {
-                acc.extensions = try jsonValueDeepClone(self.allocator, jv_);
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
             }
             if (jv.Object.get("extras")) |jv_| {
-                acc.extras = try jsonValueDeepClone(self.allocator, jv_);
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
             }
         }
     }
 
     fn freeAccessors(self: *Self, gltf: *GlTF) void {
-        if (gltf.accessors) |accs| {
-            for (accs) |*acc| {
-                if (acc.name) |name| self.allocator.free(name);
-                if (acc.extensions) |*ext| jsonValueFreeClone(self.allocator, ext);
-                if (acc.extras) |*ext| jsonValueFreeClone(self.allocator, ext);
+        if (gltf.accessors) |objs| {
+            for (objs) |*obj| {
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
             }
-            self.allocator.free(accs);
+            self.allocator.free(objs);
         }
     }
 
-    fn parseBuffers(self: *Self, gltf: *GlTF, j_buffers: json.Value) !void {
-        const len = j_buffers.Array.items.len;
+    fn parseBuffers(self: *Self, gltf: *GlTF, j_val: json.Value) !void {
+        const len = j_val.Array.items.len;
         gltf.buffers = try self.allocator.alloc(Buffer, len);
-        for (j_buffers.Array.items) |jv, i| {
+
+        for (j_val.Array.items) |jv, i| {
             const byte_length = jv.Object.get("byteLength") orelse return Error.InvalidBuffer;
-            var buf = &gltf.buffers.?[i];
-            buf.* = .{
+
+            var curr = &gltf.buffers.?[i];
+            curr.* = .{
                 .byte_length = @intCast(usize, byte_length.Integer),
             };
+
             if (jv.Object.get("uri")) |jv_| {
-                buf.uri = try self.allocator.dupe(u8, jv_.String);
+                curr.uri = try self.allocator.dupe(u8, jv_.String);
             }
             if (jv.Object.get("name")) |jv_| {
-                buf.name = try self.allocator.dupe(u8, jv_.String);
+                curr.name = try self.allocator.dupe(u8, jv_.String);
             }
             if (jv.Object.get("extensions")) |jv_| {
-                buf.extensions = try jsonValueDeepClone(self.allocator, jv_);
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
             }
             if (jv.Object.get("extras")) |jv_| {
-                buf.extras = try jsonValueDeepClone(self.allocator, jv_);
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
             }
         }
     }
 
     fn freeBuffers(self: *Self, gltf: *GlTF) void {
-        if (gltf.buffers) |bufs| {
-            for (bufs) |*buf| {
-                if (buf.uri) |uri| self.allocator.free(uri);
-                if (buf.name) |name| self.allocator.free(name);
-                if (buf.extensions) |*ext| jsonValueFreeClone(self.allocator, ext);
-                if (buf.extras) |*ext| jsonValueFreeClone(self.allocator, ext);
+        if (gltf.buffers) |objs| {
+            for (objs) |*obj| {
+                if (obj.uri) |uri| self.allocator.free(uri);
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*ext| jsonValueFreeClone(self.allocator, ext);
+                if (obj.extras) |*ext| jsonValueFreeClone(self.allocator, ext);
             }
-            self.allocator.free(bufs);
+            self.allocator.free(objs);
         }
     }
 
-    // fn parseBuffers(self: *Self, gltf: *GlTF, j_buffers: json.Value) !void {}
-    // fn freeBuffers(self: *Self, gltf: *GlTF) void {}
+    fn parseBufferViews(self: *Self, gltf: *GlTF, j_val: json.Value) !void {
+        const len = j_val.Array.items.len;
+        gltf.buffer_views = try self.allocator.alloc(BufferView, len);
+
+        for (j_val.Array.items) |jv, i| {
+            const buffer = jv.Object.get("buffer") orelse return Error.InvalidBufferView;
+            const byte_length = jv.Object.get("byteLength") orelse return Error.InvalidBufferView;
+
+            var curr = &gltf.buffer_views.?[i];
+            curr.* = .{
+                .buffer = @intCast(usize, buffer.Integer),
+                .byte_length = @intCast(usize, byte_length.Integer),
+            };
+
+            if (jv.Object.get("byteOffset")) |jv_| {
+                curr.byte_offset = @intCast(usize, jv_.Integer);
+            }
+            if (jv.Object.get("byteStride")) |jv_| {
+                curr.byte_stride = @intCast(usize, jv_.Integer);
+            }
+            if (jv.Object.get("target")) |jv_| {
+                curr.target = @intToEnum(BufferView.Target, @intCast(c.GLenum, jv_.Integer));
+            }
+            if (jv.Object.get("name")) |jv_| {
+                curr.name = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("extensions")) |jv_| {
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
+            }
+            if (jv.Object.get("extras")) |jv_| {
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
+            }
+        }
+    }
+
+    fn freeBufferViews(self: *Self, gltf: *GlTF) void {
+        if (gltf.buffer_views) |objs| {
+            for (objs) |*obj| {
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+            }
+            self.allocator.free(objs);
+        }
+    }
+
+    fn parseCameras(self: *Self, gltf: *GlTF, j_array: json.Value) !void {
+        const len = j_array.Array.items.len;
+        gltf.cameras = try self.allocator.alloc(Camera, len);
+
+        for (j_array.Array.items) |jv, i| {
+            var curr = &gltf.cameras.?[i];
+            curr.* = .{};
+
+            if (jv.Object.get("type")) |jv_| {
+                const str = jv_.String;
+                if (std.mem.eql(u8, str, "orthographic")) {
+                    curr.camera_type = .Orthographic;
+                } else if (std.mem.eql(u8, str, "perspective")) {
+                    curr.camera_type = .Perspective;
+                } else {
+                    return Error.InvalidCamera;
+                }
+            }
+            if (jv.Object.get("orthographic")) |jv_| {
+                try self.parseOrthographic(&curr.orthographic, jv_);
+            }
+            if (jv.Object.get("perspective")) |jv_| {
+                try self.parsePerspective(&curr.perspective, jv_);
+            }
+            if (jv.Object.get("name")) |jv_| {
+                curr.name = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("extensions")) |jv_| {
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
+            }
+            if (jv.Object.get("extras")) |jv_| {
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
+            }
+        }
+    }
+
+    fn freeCameras(self: *Self, gltf: *GlTF) void {
+        if (gltf.cameras) |objs| {
+            for (objs) |*obj| {
+                if (obj.orthographic) |*data| self.freeOrthographic(data);
+                if (obj.perspective) |*data| self.freePerspective(data);
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+            }
+            self.allocator.free(objs);
+        }
+    }
+
+    fn parseImages(self: *Self, gltf: *GlTF, j_array: json.Value) !void {
+        const len = j_array.Array.items.len;
+        gltf.images = try self.allocator.alloc(Image, len);
+
+        for (j_array.Array.items) |jv, i| {
+            var curr = &gltf.images.?[i];
+            curr.* = .{};
+
+            if (jv.Object.get("uri")) |jv_| {
+                curr.uri = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("bufferView")) |jv_| {
+                curr.buffer_view = @intCast(usize, jv_.Integer);
+            }
+            if (jv.Object.get("mimeType")) |jv_| {
+                const str = jv_.String;
+                if (std.mem.eql(u8, str, "image/jpeg")) {
+                    curr.mime_type = .JPEG;
+                } else if (std.mem.eql(u8, str, "image/png")) {
+                    curr.mime_type = .PNG;
+                } else {
+                    return Error.InvalidImage;
+                }
+            }
+            if (jv.Object.get("name")) |jv_| {
+                curr.name = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("extensions")) |jv_| {
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
+            }
+            if (jv.Object.get("extras")) |jv_| {
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
+            }
+        }
+    }
+
+    fn freeImages(self: *Self, gltf: *GlTF) void {
+        if (gltf.images) |objs| {
+            for (objs) |*obj| {
+                if (obj.uri) |uri| self.allocator.free(uri);
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+            }
+            self.allocator.free(objs);
+        }
+    }
+
+    fn parseMaterials(self: *Self, gltf: *GlTF, j_array: json.Value) !void {
+        const len = j_array.Array.items.len;
+        gltf.materials = try self.allocator.alloc(Material, len);
+
+        for (j_array.Array.items) |jv, i| {
+            var curr = &gltf.materials.?[i];
+            curr.* = .{};
+
+            if (jv.Object.get("pbrMetallicRoughness")) |jv_| {
+                try self.parsePbrMetallicRoughness(&curr.pbr_metallic_roughness, jv_);
+            }
+            if (jv.Object.get("normalTexture")) |jv_| {
+                try self.parseNormalTextureInfo(&curr.normal_texture, jv_);
+            }
+            if (jv.Object.get("occlusionTexture")) |jv_| {
+                try self.parseOcclusionTextureInfo(&curr.occlusion_texture, jv_);
+            }
+            if (jv.Object.get("emissiveTexture")) |jv_| {
+                try self.parseTextureInfo(&curr.emissive_texture, jv_);
+            }
+            if (jv.Object.get("emissiveFactor")) |jv_| {
+                curr.emissive_factor.?.r = jsonValueToFloat(f32, jv_.Array.items[0]);
+                curr.emissive_factor.?.g = jsonValueToFloat(f32, jv_.Array.items[1]);
+                curr.emissive_factor.?.b = jsonValueToFloat(f32, jv_.Array.items[2]);
+                curr.emissive_factor.?.a = jsonValueToFloat(f32, jv_.Array.items[3]);
+            }
+            if (jv.Object.get("alphaMode")) |jv_| {
+                if (std.mem.eql(u8, jv_.String, "OPAQUE")) {
+                    curr.alpha_mode = .Opaque;
+                } else if (std.mem.eql(u8, jv_.String, "MASK")) {
+                    curr.alpha_mode = .Mask;
+                } else if (std.mem.eql(u8, jv_.String, "BLEND")) {
+                    curr.alpha_mode = .Blend;
+                } else {
+                    return Error.InvalidMaterial;
+                }
+            }
+            if (jv.Object.get("alphaCutoff")) |jv_| {
+                curr.alpha_cutoff = jsonValueToFloat(f32, jv_);
+            }
+            if (jv.Object.get("doubleSided")) |jv_| {
+                curr.double_sided = jv_.Bool;
+            }
+            if (jv.Object.get("name")) |jv_| {
+                curr.name = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("extensions")) |jv_| {
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
+            }
+            if (jv.Object.get("extras")) |jv_| {
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
+            }
+        }
+    }
+
+    fn freeMaterials(self: *Self, gltf: *GlTF) void {
+        if (gltf.materials) |objs| {
+            for (objs) |*obj| {
+                if (obj.pbr_metallic_roughness) |*pbr| self.freePbrMetallicRoughness(pbr);
+                if (obj.normal_texture) |*nti| self.freeNormalTextureInfo(nti);
+                if (obj.occlusion_texture) |*oti| self.freeOcclusionTextureInfo(oti);
+                if (obj.emissive_texture) |*eti| self.freeTextureInfo(eti);
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+            }
+            self.allocator.free(objs);
+        }
+    }
+
+    // Mesh
+    // Node
+
+    fn parseNormalTextureInfo(self: *Self, data: *?NormalTextureInfo, jv: json.Value) !void {
+        const index = jv.Object.get("index") orelse return Error.InvalidMaterial;
+        data.* = .{
+            .index = @intCast(usize, index.Integer),
+        };
+
+        if (jv.Object.get("texCoord")) |jv_| {
+            data.*.?.tex_coord = @intCast(usize, jv_.Integer);
+        }
+        if (jv.Object.get("scale")) |jv_| {
+            data.*.?.scale = jsonValueToFloat(f32, jv_);
+        }
+        if (jv.Object.get("extensions")) |jv_| {
+            data.*.?.extensions = try jsonValueDeepClone(self.allocator, jv_);
+        }
+        if (jv.Object.get("extras")) |jv_| {
+            data.*.?.extras = try jsonValueDeepClone(self.allocator, jv_);
+        }
+    }
+
+    fn freeNormalTextureInfo(self: *Self, data: *NormalTextureInfo) void {
+        if (data.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+        if (data.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+    }
+
+    fn parseOcclusionTextureInfo(self: *Self, data: *?OcclusionTextureInfo, jv: json.Value) !void {
+        const index = jv.Object.get("index") orelse return Error.InvalidMaterial;
+        data.* = .{
+            .index = @intCast(usize, index.Integer),
+        };
+
+        if (jv.Object.get("texCoord")) |jv_| {
+            data.*.?.tex_coord = @intCast(usize, jv_.Integer);
+        }
+        if (jv.Object.get("strength")) |jv_| {
+            data.*.?.strength = jsonValueToFloat(f32, jv_);
+        }
+        if (jv.Object.get("extensions")) |jv_| {
+            data.*.?.extensions = try jsonValueDeepClone(self.allocator, jv_);
+        }
+        if (jv.Object.get("extras")) |jv_| {
+            data.*.?.extras = try jsonValueDeepClone(self.allocator, jv_);
+        }
+    }
+
+    fn freeOcclusionTextureInfo(self: *Self, data: *OcclusionTextureInfo) void {
+        if (data.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+        if (data.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+    }
+
+    fn parseOrthographic(self: *Self, data: *?Orthographic, jv: json.Value) !void {
+        const xmag = jv.Object.get("xmag") orelse return Error.InvalidCamera;
+        const ymag = jv.Object.get("ymag") orelse return Error.InvalidCamera;
+        const zfar = jv.Object.get("zfar") orelse return Error.InvalidCamera;
+        const znear = jv.Object.get("znear") orelse return Error.InvalidCamera;
+        data.* = .{
+            .xmag = jsonValueToFloat(f32, xmag),
+            .ymag = jsonValueToFloat(f32, ymag),
+            .zfar = jsonValueToFloat(f32, zfar),
+            .znear = jsonValueToFloat(f32, znear),
+        };
+        if (jv.Object.get("extensions")) |jv_| {
+            data.*.?.extensions = try jsonValueDeepClone(self.allocator, jv_);
+        }
+        if (jv.Object.get("extras")) |jv_| {
+            data.*.?.extras = try jsonValueDeepClone(self.allocator, jv_);
+        }
+    }
+
+    fn freeOrthographic(self: *Self, data: *Orthographic) void {
+        if (data.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+        if (data.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+    }
+
+    fn parsePbrMetallicRoughness(self: *Self, data: *?PbrMetallicRoughness, jv: json.Value) !void {
+        data.* = .{};
+
+        if (jv.Object.get("baseColorFactor")) |jv_| {
+            data.*.?.base_color_factor.?.r = jsonValueToFloat(f32, jv_.Array.items[0]);
+            data.*.?.base_color_factor.?.g = jsonValueToFloat(f32, jv_.Array.items[1]);
+            data.*.?.base_color_factor.?.b = jsonValueToFloat(f32, jv_.Array.items[2]);
+            data.*.?.base_color_factor.?.a = jsonValueToFloat(f32, jv_.Array.items[3]);
+        }
+        if (jv.Object.get("baseColorTexture")) |jv_| {
+            try self.parseTextureInfo(&data.*.?.base_color_texture, jv_);
+        }
+        if (jv.Object.get("metallicFactor")) |jv_| {
+            data.*.?.metallic_factor = jsonValueToFloat(f32, jv_);
+        }
+        if (jv.Object.get("roughnessFactor")) |jv_| {
+            data.*.?.roughness_factor = jsonValueToFloat(f32, jv_);
+        }
+        if (jv.Object.get("metallicRoughnessTexture")) |jv_| {
+            try self.parseTextureInfo(&data.*.?.metallic_roughness_texture, jv_);
+        }
+        if (jv.Object.get("extensions")) |jv_| {
+            data.*.?.extensions = try jsonValueDeepClone(self.allocator, jv_);
+        }
+        if (jv.Object.get("extras")) |jv_| {
+            data.*.?.extras = try jsonValueDeepClone(self.allocator, jv_);
+        }
+    }
+
+    fn freePbrMetallicRoughness(self: *Self, data: *PbrMetallicRoughness) void {
+        if (data.base_color_texture) |*bct| self.freeTextureInfo(bct);
+        if (data.metallic_roughness_texture) |*mrt| self.freeTextureInfo(mrt);
+        if (data.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+        if (data.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+    }
+
+    fn parsePerspective(self: *Self, data: *?Perspective, jv: json.Value) !void {
+        const yfov = jv.Object.get("yfov") orelse return Error.InvalidCamera;
+        const znear = jv.Object.get("znear") orelse return Error.InvalidCamera;
+        data.* = .{
+            .yfov = jsonValueToFloat(f32, yfov),
+            .znear = jsonValueToFloat(f32, znear),
+        };
+        if (jv.Object.get("aspectRatio")) |jv_| {
+            data.*.?.aspect_ratio = jsonValueToFloat(f32, jv_);
+        }
+        if (jv.Object.get("zfar")) |jv_| {
+            data.*.?.zfar = jsonValueToFloat(f32, jv_);
+        }
+        if (jv.Object.get("extensions")) |jv_| {
+            data.*.?.extensions = try jsonValueDeepClone(self.allocator, jv_);
+        }
+        if (jv.Object.get("extras")) |jv_| {
+            data.*.?.extras = try jsonValueDeepClone(self.allocator, jv_);
+        }
+    }
+
+    fn freePerspective(self: *Self, data: *Perspective) void {
+        if (data.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+        if (data.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+    }
+
+    // Primitive
+    // Sampler
+    // Scene
+    // Texture
+
+    fn parseTextureInfo(self: *Self, data: *?TextureInfo, jv: json.Value) !void {
+        const index = jv.Object.get("index") orelse return Error.InvalidPbrMetallicRoughness;
+        data.* = .{
+            .index = @intCast(usize, index.Integer),
+        };
+
+        if (jv.Object.get("texCoord")) |jv_| {
+            data.*.?.tex_coord = @intCast(usize, jv_.Integer);
+        }
+        if (jv.Object.get("extensions")) |jv_| {
+            data.*.?.extensions = try jsonValueDeepClone(self.allocator, jv_);
+        }
+        if (jv.Object.get("extras")) |jv_| {
+            data.*.?.extras = try jsonValueDeepClone(self.allocator, jv_);
+        }
+    }
+
+    fn freeTextureInfo(self: *Self, data: *TextureInfo) void {
+        if (data.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+        if (data.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+    }
 };
 
 test "gltf" {
@@ -597,5 +1012,5 @@ test "gltf" {
 
     std.log.warn("generator {}", .{gltf.asset.generator});
     std.log.warn("buf len   {}", .{gltf.buffers.?.len});
-    std.log.warn("buf start {}", .{gltf.buffers.?[0].uri.?[0..15]});
+    std.log.warn("buf start {}", .{gltf.materials.?[0]});
 }

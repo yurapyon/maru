@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const json = std.json;
+const StringHashMap = std.StringHashMap;
 
 //;
 
@@ -220,7 +221,9 @@ pub const Node = struct {
     // TODO skin
     matrix: ?Mat4 = Mat4.identity(),
     mesh: ?usize = null,
-    transform: ?Transform3d = Transform3d.identity(),
+    rotation: ?Quaternion = null,
+    scale: ?Vec3 = null,
+    translation: ?Vec3 = null,
     // TODO weights
     name: ?[]u8 = null,
     extensions: ?Extensions = null,
@@ -272,34 +275,7 @@ pub const Perspective = struct {
 };
 
 pub const Primitive = struct {
-    pub const AttributeType = union(enum) {
-        Position,
-        Normal,
-        Tangent,
-        TexCoord0,
-        TexCoord1,
-        Color0,
-        Joints0,
-        Weights0,
-        Custom: []u8,
-    };
-
-    // TODO verify attributes will look like this
-    pub const Attribute = struct {
-        attribute_type: AttributeType,
-        accessor: usize,
-    };
-
-    pub const TargetType = enum {
-        Position,
-        Normal,
-        Tangent,
-    };
-
-    pub const Target = struct {
-        target_type: TargetType,
-        accessor: usize,
-    };
+    pub const AttributeMap = StringHashMap(usize);
 
     pub const Mode = enum(c.GLenum) {
         Points = c.GL_POINTS,
@@ -311,11 +287,11 @@ pub const Primitive = struct {
         TriangleFan = c.GL_TRIANGLE_FAN,
     };
 
-    attributes: []Attribute,
+    attributes: AttributeMap,
     indices: ?usize = null,
     material: ?usize = null,
     mode: ?Mode = .Triangles,
-    targets: ?[]Target = null,
+    targets: ?[]AttributeMap = null,
     extensions: ?Extensions = null,
     extras: ?Extras = null,
 };
@@ -412,7 +388,7 @@ pub const GlTF_Parser = struct {
         InvalidCamera,
         InvalidImage,
         InvalidMaterial,
-        InvalidPbrMetallicRoughness,
+        InvalidMesh,
     };
 
     allocator: *Allocator,
@@ -452,22 +428,28 @@ pub const GlTF_Parser = struct {
 
         try parseAsset(self, &ret, j_asset);
         if (root.Object.get("accessors")) |jv| {
-            try parseAccessors(self, &ret, jv);
+            try self.parseAccessors(&ret, jv);
         }
         if (root.Object.get("buffers")) |jv| {
-            try parseBuffers(self, &ret, jv);
+            try self.parseBuffers(&ret, jv);
         }
         if (root.Object.get("bufferViews")) |jv| {
-            try parseBufferViews(self, &ret, jv);
+            try self.parseBufferViews(&ret, jv);
         }
         if (root.Object.get("cameras")) |jv| {
-            try parseCameras(self, &ret, jv);
+            try self.parseCameras(&ret, jv);
         }
         if (root.Object.get("images")) |jv| {
-            try parseImages(self, &ret, jv);
+            try self.parseImages(&ret, jv);
         }
         if (root.Object.get("materials")) |jv| {
-            try parseMaterials(self, &ret, jv);
+            try self.parseMaterials(&ret, jv);
+        }
+        if (root.Object.get("meshes")) |jv| {
+            try self.parseMeshes(&ret, jv);
+        }
+        if (root.Object.get("nodes")) |jv| {
+            try self.parseNodes(&ret, jv);
         }
 
         // TODO
@@ -485,6 +467,8 @@ pub const GlTF_Parser = struct {
         self.freeCameras(gltf);
         self.freeImages(gltf);
         self.freeMaterials(gltf);
+        self.freeMeshes(gltf);
+        self.freeNodes(gltf);
     }
 
     //;
@@ -834,8 +818,98 @@ pub const GlTF_Parser = struct {
         }
     }
 
-    // Mesh
-    // Node
+    fn parseMeshes(self: *Self, gltf: *GlTF, j_array: json.Value) !void {
+        const len = j_array.Array.items.len;
+        gltf.meshes = try self.allocator.alloc(Mesh, len);
+
+        for (j_array.Array.items) |jv, i| {
+            const primitives = jv.Object.get("primitives") orelse return Error.InvalidMesh;
+            var curr = &gltf.meshes.?[i];
+            curr.* = .{
+                .primitives = try self.allocator.alloc(Primitive, primitives.Array.items.len),
+            };
+            for (primitives.Array.items) |jv_, pi| {
+                try self.parsePrimitive(&curr.primitives[pi], jv_);
+            }
+
+            if (jv.Object.get("weights")) |jv_| {
+                curr.weights = try self.allocator.alloc(f32, jv_.Array.items.len);
+                for (jv_.Array.items) |weight, wi| {
+                    curr.weights.?[wi] = jsonValueToFloat(f32, weight);
+                }
+            }
+            if (jv.Object.get("name")) |jv_| {
+                curr.name = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("extensions")) |jv_| {
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
+            }
+            if (jv.Object.get("extras")) |jv_| {
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
+            }
+        }
+    }
+
+    fn freeMeshes(self: *Self, gltf: *GlTF) void {
+        if (gltf.meshes) |objs| {
+            for (objs) |*obj| {
+                for (obj.primitives) |*p| {
+                    self.freePrimitive(p);
+                    self.allocator.free(obj.primitives);
+                }
+                if (obj.weights) |weights| self.allocator.free(weights);
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+            }
+            self.allocator.free(objs);
+        }
+    }
+
+    fn parseNodes(self: *Self, gltf: *GlTF, j_array: json.Value) !void {
+        const len = j_array.Array.items.len;
+        gltf.nodes = try self.allocator.alloc(Node, len);
+
+        for (j_array.Array.items) |jv, i| {
+            var curr = &gltf.nodes.?[i];
+            curr.* = .{};
+            if (jv.Object.get("camera")) |jv_| {
+                curr.camera = @intCast(usize, jv_.Integer);
+            }
+            if (jv.Object.get("children")) |jv_| {
+                curr.children = try self.allocator.alloc(usize, jv_.Array.items.len);
+                for (jv_.Array.items) |jv__, ci| {
+                    curr.children.?[ci] = @intCast(usize, jv__.Integer);
+                }
+            }
+            // TODO matrix
+            if (jv.Object.get("mesh")) |jv_| {
+                curr.mesh = @intCast(usize, jv_.Integer);
+            }
+            // TODO transform
+            if (jv.Object.get("name")) |jv_| {
+                curr.name = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("extensions")) |jv_| {
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
+            }
+            if (jv.Object.get("extras")) |jv_| {
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
+            }
+        }
+    }
+
+    fn freeNodes(self: *Self, gltf: *GlTF) void {
+        if (gltf.nodes) |objs| {
+            for (objs) |*obj| {
+                if (obj.children) |chl| self.allocator.free(chl);
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+            }
+            self.allocator.free(objs);
+        }
+    }
 
     fn parseNormalTextureInfo(self: *Self, data: *?NormalTextureInfo, jv: json.Value) !void {
         const index = jv.Object.get("index") orelse return Error.InvalidMaterial;
@@ -973,13 +1047,84 @@ pub const GlTF_Parser = struct {
         if (data.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
     }
 
-    // Primitive
+    fn parsePrimitive(self: *Self, data: *Primitive, jv: json.Value) !void {
+        const attributes = jv.Object.get("attributes") orelse return Error.InvalidMesh;
+        data.* = .{
+            .attributes = Primitive.AttributeMap.init(self.allocator),
+        };
+
+        {
+            var iter = attributes.Object.iterator();
+            while (iter.next()) |entry| {
+                try data.*.attributes.put(entry.key, @intCast(usize, entry.value.Integer));
+            }
+        }
+
+        if (jv.Object.get("indices")) |jv_| {
+            data.indices = @intCast(usize, jv_.Integer);
+        }
+        if (jv.Object.get("material")) |jv_| {
+            data.material = @intCast(usize, jv_.Integer);
+        }
+        if (jv.Object.get("mode")) |jv_| {
+            var mode: Primitive.Mode = undefined;
+            if (std.mem.eql(u8, jv_.String, "POINTS")) {
+                mode = .Points;
+            } else if (std.mem.eql(u8, jv_.String, "LINES")) {
+                mode = .Lines;
+            } else if (std.mem.eql(u8, jv_.String, "LINE_LOOP")) {
+                mode = .LineLoop;
+            } else if (std.mem.eql(u8, jv_.String, "LINE_STRIP")) {
+                mode = .LineStrip;
+            } else if (std.mem.eql(u8, jv_.String, "TRIANGLES")) {
+                mode = .Triangles;
+            } else if (std.mem.eql(u8, jv_.String, "TRIANGLE_STRIP")) {
+                mode = .TriangleStrip;
+            } else if (std.mem.eql(u8, jv_.String, "TRIANGLE_FAN")) {
+                mode = .TriangleFan;
+            } else {
+                return Error.InvalidMesh;
+            }
+            data.mode = mode;
+        }
+        if (jv.Object.get("targets")) |jv_| {
+            var targets = try self.allocator.alloc(Primitive.AttributeMap, jv_.Array.items.len);
+            for (jv_.Array.items) |j_target, i| {
+                targets[i] = Primitive.AttributeMap.init(self.allocator);
+
+                var iter = j_target.Object.iterator();
+                while (iter.next()) |entry| {
+                    try targets[i].put(entry.key, @intCast(usize, entry.value.Integer));
+                }
+            }
+            data.targets = targets;
+        }
+        if (jv.Object.get("extensions")) |jv_| {
+            data.extensions = try jsonValueDeepClone(self.allocator, jv_);
+        }
+        if (jv.Object.get("extras")) |jv_| {
+            data.extras = try jsonValueDeepClone(self.allocator, jv_);
+        }
+    }
+
+    fn freePrimitive(self: *Self, data: *Primitive) void {
+        data.attributes.deinit();
+        if (data.targets) |targets| {
+            for (targets) |*target| {
+                target.deinit();
+            }
+            self.allocator.free(targets);
+        }
+        if (data.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+        if (data.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+    }
+
     // Sampler
     // Scene
     // Texture
 
     fn parseTextureInfo(self: *Self, data: *?TextureInfo, jv: json.Value) !void {
-        const index = jv.Object.get("index") orelse return Error.InvalidPbrMetallicRoughness;
+        const index = jv.Object.get("index") orelse return Error.InvalidMaterial;
         data.* = .{
             .index = @intCast(usize, index.Integer),
         };
@@ -1011,6 +1156,5 @@ test "gltf" {
     defer parser.freeParse(&gltf);
 
     std.log.warn("generator {}", .{gltf.asset.generator});
-    std.log.warn("buf len   {}", .{gltf.buffers.?.len});
-    std.log.warn("buf start {}", .{gltf.materials.?[0]});
+    std.log.warn("\n{}\n\n", .{gltf.meshes.?[0]});
 }

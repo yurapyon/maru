@@ -221,9 +221,9 @@ pub const Node = struct {
     // TODO skin
     matrix: ?Mat4 = Mat4.identity(),
     mesh: ?usize = null,
-    rotation: ?Quaternion = null,
-    scale: ?Vec3 = null,
-    translation: ?Vec3 = null,
+    rotation: ?Quaternion = Quaternion.identity(),
+    scale: ?Vec3 = Vec3.one(),
+    translation: ?Vec3 = Vec3.zero(),
     // TODO weights
     name: ?[]u8 = null,
     extensions: ?Extensions = null,
@@ -312,7 +312,7 @@ pub const Sampler = struct {
         Repeat = c.GL_REPEAT,
     };
 
-    max_filter: ?Filter = null,
+    mag_filter: ?Filter = null,
     min_filter: ?Filter = null,
     wrap_s: ?Wrap = .Repeat,
     wrap_t: ?Wrap = .Repeat,
@@ -426,6 +426,10 @@ pub const GlTF_Parser = struct {
             },
         };
 
+        // TODO
+        if (root.Object.get("extensionsUsed")) |exts| {}
+        if (root.Object.get("extensionsRequired")) |exts| {}
+
         try parseAsset(self, &ret, j_asset);
         if (root.Object.get("accessors")) |jv| {
             try self.parseAccessors(&ret, jv);
@@ -451,10 +455,24 @@ pub const GlTF_Parser = struct {
         if (root.Object.get("nodes")) |jv| {
             try self.parseNodes(&ret, jv);
         }
-
-        // TODO
-        if (root.Object.get("extensionsUsed")) |exts| {}
-        if (root.Object.get("extensionsRequired")) |exts| {}
+        if (root.Object.get("samplers")) |jv| {
+            try self.parseSamplers(&ret, jv);
+        }
+        if (root.Object.get("scene")) |jv| {
+            ret.scene = @intCast(usize, jv.Integer);
+        }
+        if (root.Object.get("scenes")) |jv| {
+            try self.parseScenes(&ret, jv);
+        }
+        if (root.Object.get("textures")) |jv| {
+            try self.parseTextures(&ret, jv);
+        }
+        if (root.Object.get("extensions")) |jv| {
+            ret.extensions = try jsonValueDeepClone(self.allocator, jv);
+        }
+        if (root.Object.get("extras")) |jv| {
+            ret.extras = try jsonValueDeepClone(self.allocator, jv);
+        }
 
         return ret;
     }
@@ -469,10 +487,16 @@ pub const GlTF_Parser = struct {
         self.freeMaterials(gltf);
         self.freeMeshes(gltf);
         self.freeNodes(gltf);
+        self.freeSamplers(gltf);
+        self.freeScenes(gltf);
+        self.freeTextures(gltf);
+        if (gltf.extensions) |*ext| jsonValueFreeClone(self.allocator, ext);
+        if (gltf.extras) |*ext| jsonValueFreeClone(self.allocator, ext);
     }
 
     //;
 
+    // TODO take *Asset not *GlTF
     fn parseAsset(self: *Self, gltf: *GlTF, j_val: json.Value) !void {
         // TODO handle memory leaks
         if (j_val.Object.get("copyright")) |jv| {
@@ -882,11 +906,36 @@ pub const GlTF_Parser = struct {
                     curr.children.?[ci] = @intCast(usize, jv__.Integer);
                 }
             }
-            // TODO matrix
+            if (jv.Object.get("matrix")) |jv_| {
+                curr.matrix = Mat4.identity();
+                for (jv_.Array.items) |item, ai| {
+                    const y = ai % 4;
+                    const x = ai / 4;
+                    curr.matrix.?.data[y][x] = jsonValueToFloat(f32, item);
+                }
+            }
             if (jv.Object.get("mesh")) |jv_| {
                 curr.mesh = @intCast(usize, jv_.Integer);
             }
-            // TODO transform
+            if (jv.Object.get("rotation")) |jv_| {
+                curr.rotation = Quaternion.identity();
+                curr.rotation.?.x = jsonValueToFloat(f32, jv_.Array.items[0]);
+                curr.rotation.?.y = jsonValueToFloat(f32, jv_.Array.items[1]);
+                curr.rotation.?.z = jsonValueToFloat(f32, jv_.Array.items[2]);
+                curr.rotation.?.w = jsonValueToFloat(f32, jv_.Array.items[3]);
+            }
+            if (jv.Object.get("scale")) |jv_| {
+                curr.scale = Vec3.one();
+                curr.scale.?.x = jsonValueToFloat(f32, jv_.Array.items[0]);
+                curr.scale.?.y = jsonValueToFloat(f32, jv_.Array.items[1]);
+                curr.scale.?.z = jsonValueToFloat(f32, jv_.Array.items[2]);
+            }
+            if (jv.Object.get("translation")) |jv_| {
+                curr.translation = Vec3.zero();
+                curr.translation.?.x = jsonValueToFloat(f32, jv_.Array.items[0]);
+                curr.translation.?.y = jsonValueToFloat(f32, jv_.Array.items[1]);
+                curr.translation.?.z = jsonValueToFloat(f32, jv_.Array.items[2]);
+            }
             if (jv.Object.get("name")) |jv_| {
                 curr.name = try self.allocator.dupe(u8, jv_.String);
             }
@@ -1119,9 +1168,120 @@ pub const GlTF_Parser = struct {
         if (data.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
     }
 
-    // Sampler
-    // Scene
-    // Texture
+    fn parseSamplers(self: *Self, gltf: *GlTF, j_array: json.Value) !void {
+        const len = j_array.Array.items.len;
+        gltf.samplers = try self.allocator.alloc(Sampler, len);
+
+        for (j_array.Array.items) |jv, i| {
+            var curr = &gltf.samplers.?[i];
+            curr.* = .{};
+            if (jv.Object.get("minFilter")) |jv_| {
+                curr.min_filter = @intToEnum(Sampler.Filter, @intCast(c.GLenum, jv_.Integer));
+            }
+            if (jv.Object.get("magFilter")) |jv_| {
+                curr.mag_filter = @intToEnum(Sampler.Filter, @intCast(c.GLenum, jv_.Integer));
+            }
+            if (jv.Object.get("wrapS")) |jv_| {
+                curr.wrap_s = @intToEnum(Sampler.Wrap, @intCast(c.GLenum, jv_.Integer));
+            }
+            if (jv.Object.get("wrapT")) |jv_| {
+                curr.wrap_t = @intToEnum(Sampler.Wrap, @intCast(c.GLenum, jv_.Integer));
+            }
+            if (jv.Object.get("name")) |jv_| {
+                curr.name = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("extensions")) |jv_| {
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
+            }
+            if (jv.Object.get("extras")) |jv_| {
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
+            }
+        }
+    }
+
+    fn freeSamplers(self: *Self, gltf: *GlTF) void {
+        if (gltf.samplers) |objs| {
+            for (objs) |*obj| {
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+            }
+            self.allocator.free(objs);
+        }
+    }
+
+    fn parseScenes(self: *Self, gltf: *GlTF, j_array: json.Value) !void {
+        const len = j_array.Array.items.len;
+        gltf.scenes = try self.allocator.alloc(Scene, len);
+
+        for (j_array.Array.items) |jv, i| {
+            var curr = &gltf.scenes.?[i];
+            curr.* = .{};
+            if (jv.Object.get("nodes")) |jv_| {
+                curr.nodes = try self.allocator.alloc(usize, jv_.Array.items.len);
+                for (jv_.Array.items) |item, ai| {
+                    curr.nodes.?[ai] = @intCast(usize, item.Integer);
+                }
+            }
+            if (jv.Object.get("name")) |jv_| {
+                curr.name = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("extensions")) |jv_| {
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
+            }
+            if (jv.Object.get("extras")) |jv_| {
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
+            }
+        }
+    }
+
+    fn freeScenes(self: *Self, gltf: *GlTF) void {
+        if (gltf.scenes) |objs| {
+            for (objs) |*obj| {
+                if (obj.nodes) |nodes| self.allocator.free(nodes);
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+            }
+            self.allocator.free(objs);
+        }
+    }
+
+    fn parseTextures(self: *Self, gltf: *GlTF, j_array: json.Value) !void {
+        const len = j_array.Array.items.len;
+        gltf.textures = try self.allocator.alloc(Texture, len);
+
+        for (j_array.Array.items) |jv, i| {
+            var curr = &gltf.textures.?[i];
+            curr.* = .{};
+            if (jv.Object.get("source")) |jv_| {
+                curr.source = @intCast(usize, jv_.Integer);
+            }
+            if (jv.Object.get("sampler")) |jv_| {
+                curr.sampler = @intCast(usize, jv_.Integer);
+            }
+            if (jv.Object.get("name")) |jv_| {
+                curr.name = try self.allocator.dupe(u8, jv_.String);
+            }
+            if (jv.Object.get("extensions")) |jv_| {
+                curr.extensions = try jsonValueDeepClone(self.allocator, jv_);
+            }
+            if (jv.Object.get("extras")) |jv_| {
+                curr.extras = try jsonValueDeepClone(self.allocator, jv_);
+            }
+        }
+    }
+
+    fn freeTextures(self: *Self, gltf: *GlTF) void {
+        if (gltf.textures) |objs| {
+            for (objs) |*obj| {
+                if (obj.name) |name| self.allocator.free(name);
+                if (obj.extensions) |*jv| jsonValueFreeClone(self.allocator, jv);
+                if (obj.extras) |*jv| jsonValueFreeClone(self.allocator, jv);
+            }
+            self.allocator.free(objs);
+        }
+    }
 
     fn parseTextureInfo(self: *Self, data: *?TextureInfo, jv: json.Value) !void {
         const index = jv.Object.get("index") orelse return Error.InvalidMaterial;
@@ -1155,6 +1315,8 @@ test "gltf" {
     var gltf = try parser.parseFromString(suz);
     defer parser.freeParse(&gltf);
 
-    std.log.warn("generator {}", .{gltf.asset.generator});
-    std.log.warn("\n{}\n\n", .{gltf.meshes.?[0]});
+    std.log.warn("{}", .{gltf.samplers.?[0]});
+    for (gltf.nodes.?) |item| {
+        std.log.warn("\n{}\n\n", .{item});
+    }
 }

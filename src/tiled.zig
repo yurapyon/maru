@@ -258,7 +258,7 @@ pub const Map = struct {
     tilewidth: i64,
     tilesets: []Tileset,
     @"type": []u8,
-    version: f64,
+    version: []u8,
     width: i64,
 
     pub fn init(allocator: *Allocator, json_str: []const u8) !Self {
@@ -272,19 +272,24 @@ pub const Map = struct {
     }
 };
 
-// test "tiled" {
-//     var alloc = std.testing.allocator;
-//
-//     // TODO read file differently
-//     var file = try std.fs.cwd().openFile("tests/debug.json", .{ .read = true });
-//     defer file.close();
-//     const sz = try file.getEndPos();
-//     var buf = try alloc.alloc(u8, sz);
-//     defer alloc.free(buf);
-//     const read = file.readAll(buf);
-//
-//     std.log.warn("{}", .{buf});
-//
-//     var m = try Map.init(alloc, buf);
-//     defer m.deinit(alloc);
-// }
+test "tiled" {
+    var alloc = std.testing.allocator;
+
+    // TODO read file differently
+    var file = try std.fs.cwd().openFile("tests/debug.json", .{ .read = true });
+    defer file.close();
+    const sz = try file.getEndPos();
+    var buf = try alloc.alloc(u8, sz);
+    defer alloc.free(buf);
+    const read = file.readAll(buf);
+
+    // std.log.warn("\n{}\n", .{buf});
+
+    var m = try Map.init(alloc, buf);
+    defer m.deinit(alloc);
+
+    std.log.warn("image name: {}", .{m.layers[0].ImageLayer.image});
+    std.log.warn("compression level: {}", .{m.compressionlevel});
+    std.log.warn("height: {}", .{m.layers[2].TileLayer.height});
+    std.log.warn("len: {}", .{m.layers[2].TileLayer.data.gids.len});
+}

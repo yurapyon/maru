@@ -1622,7 +1622,7 @@ pub fn parseFree(comptime T: type, value: T, options: ParseOptions) void {
         .Union => |unionInfo| {
             if (unionInfo.tag_type) |UnionTagType| {
                 inline for (unionInfo.fields) |u_field| {
-                    if (@enumToInt(@as(UnionTagType, value)) == u_field.enum_field.?.value) {
+                    if (value == @field(UnionTagType, u_field.name)) {
                         parseFree(u_field.field_type, @field(value, u_field.name), options);
                         break;
                     }
@@ -2730,9 +2730,9 @@ test "stringify struct with indentation" {
         \\}
     ,
         struct {
-                foo: u32,
-                bar: [3]u32,
-            }{
+            foo: u32,
+            bar: [3]u32,
+        }{
             .foo = 42,
             .bar = .{ 1, 2, 3 },
         },
@@ -2743,9 +2743,9 @@ test "stringify struct with indentation" {
     try teststringify(
         "{\n\t\"foo\":42,\n\t\"bar\":[\n\t\t1,\n\t\t2,\n\t\t3\n\t]\n}",
         struct {
-                foo: u32,
-                bar: [3]u32,
-            }{
+            foo: u32,
+            bar: [3]u32,
+        }{
             .foo = 42,
             .bar = .{ 1, 2, 3 },
         },

@@ -627,6 +627,9 @@ pub fn Mesh(comptime T: type) type {
     return struct {
         const Self = @This();
 
+        //TODO
+        // need these in here for length, which is used whenrenering
+        //is there a way aroundthis
         vertices: []const T,
         indices: []const u32,
         vao: VertexArray,

@@ -36,7 +36,7 @@ pub fn TVec2(comptime T: type) type {
         pub fn cast(self: Self, comptime U: type) TVec2(U) {
             comptime assertIsNumberType(U);
 
-            if (@typeInfo(Self) == .Float) {
+            if (@typeInfo(T) == .Float) {
                 if (@typeInfo(U) == .Float) {
                     return .{
                         .x = @floatCast(U, self.x),
@@ -104,6 +104,13 @@ pub fn TVec2(comptime T: type) type {
             return .{
                 .x = self.x * scalar,
                 .y = self.y * scalar,
+            };
+        }
+
+        pub fn divScalar(self: Self, scalar: T) Self {
+            return .{
+                .x = self.x / scalar,
+                .y = self.y / scalar,
             };
         }
 

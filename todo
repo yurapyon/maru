@@ -4,3 +4,7 @@ for anything that takes workspace allocator, put that as first arg, unless after
 
 defaults/mod.zig
 layout should be maru.defaults.flat, not maru.flat
+
+reorganize content/shaders
+
+scenegraph

@@ -14,6 +14,8 @@ const CoordinateStack = @import("../coordinates.zig").CoordinateStack;
 const math = @import("../math.zig");
 usingnamespace math;
 
+usingnamespace @import("util.zig");
+
 //;
 
 // TODO
@@ -139,7 +141,7 @@ pub const Spritebatch = struct {
         );
         ret.instancer.makeVertexArrayCompatible(ret.quad.vao);
 
-        Vertex2d.genQuad(&ret.quad_centered_verts, false);
+        Vertex2d.genQuad(&ret.quad_centered_verts, true);
         ret.quad_centered = Mesh2d.init(
             &ret.quad_centered_verts,
             &[_]u32{},
@@ -162,9 +164,9 @@ pub const Spritebatch = struct {
         centered: bool,
     ) gfx.BoundInstancer(Sprite, Vertex2d) {
         if (centered) {
-            return self.instancer.bind(Vertex2d, &self.quad);
-        } else {
             return self.instancer.bind(Vertex2d, &self.quad_centered);
+        } else {
+            return self.instancer.bind(Vertex2d, &self.quad);
         }
     }
 };
@@ -223,20 +225,6 @@ pub const Program2d = struct {
 
     pub fn deinit(self: *Self) void {
         self.program.deinit();
-    }
-
-    // TODO move this out somewhere so it can be used for 3d
-    fn applyEffectToDefaultShader(
-        allocator: *Allocator,
-        comptime default_shader: []const u8,
-        comptime default_effect: []const u8,
-        maybe_effect: ?[]const u8,
-    ) ![:0]u8 {
-        const ins = std.mem.indexOfScalar(u8, default_shader, '@') orelse unreachable;
-        const header = default_shader[0..ins];
-        const footer = default_shader[(ins + 1)..];
-        const effect = maybe_effect orelse default_effect;
-        return std.mem.joinZ(allocator, "", &[_][]const u8{ header, effect, footer });
     }
 
     // TODO write a test that tests default program with no effects works
@@ -406,6 +394,7 @@ pub const Drawer2d = struct {
         };
     }
 
+    // TODO put centered_quad into the binding context
     pub fn bindSpritebatch(self: *Self, centered_quad: bool, ctx: BindingContext) BoundSpritebatch {
         var ret = BoundSpritebatch{
             .base = self.bind(ctx),
